@@ -42,8 +42,21 @@ def create_ingest_client(
             raise ValueError(f"Unknown source '{source}'. Choose from: {list(clients)}")
         return clients[source]()
 
-    # live mode — stubs (consumers replace with real SDK clients)
-    raise NotImplementedError(
-        f"Live '{source}' client not implemented in conductor-integrations. "
-        "Extend BaseIngestClient in your consumer package and register it here."
-    )
+    # live mode — real API clients (require credentials set in env)
+    if mode == "live":
+        from conductor_integrations.sources.snyk import SnykClient
+        from conductor_integrations.sources.sonar import SonarClient
+        from conductor_integrations.sources.blackduck import BlackDuckClient
+        from conductor_integrations.sources.ado import ADOClient
+
+        clients_live = {
+            "snyk": SnykClient,
+            "sonar": SonarClient,
+            "blackduck": BlackDuckClient,
+            "ado": ADOClient,
+        }
+        if source not in clients_live:
+            raise ValueError(f"Unknown source '{source}'. Choose from: {list(clients_live)}")
+        return clients_live[source]()
+
+    raise ValueError(f"Unknown CONDUCTOR_PROVIDER_MODE '{mode}'. Choose: mock, sample, integration, live")

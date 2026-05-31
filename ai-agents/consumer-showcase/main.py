@@ -208,6 +208,12 @@ async def run(
     from conductor_agents.agents.notify.agent import NotifyAgent
     from conductor_agents.agents.feedback.agent import FeedbackAgent
 
+    if provider_mode in ("integration", "live"):
+        from conductor_integrations.git.real_git_agent import RealGitAgent
+        git_agent = RealGitAgent()
+    else:
+        git_agent = GitAgent()
+
     agents = {
         "triage": TriageAgent(llm),
         "security_analyst": SecurityAnalystAgent(llm),
@@ -217,7 +223,7 @@ async def run(
         "security_gatekeeper": SecurityGatekeeperAgent(llm),
         "reviewer": ReviewerAgent(llm),
         "scribe": ScribeAgent(llm),
-        "git": GitAgent(),
+        "git": git_agent,
         "notify": NotifyAgent(),
         "feedback": FeedbackAgent(),
     }
@@ -232,7 +238,10 @@ async def run(
 
     ctx = WorkflowContext(
         run_id=f"{item.id}-demo",
-        payload={"work_item": item.model_dump()},
+        payload={
+            "work_item": item.model_dump(),
+            "github_org": os.getenv("GITHUB_ORG", ""),
+        },
         mode="plan",
     )
 
