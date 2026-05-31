@@ -170,6 +170,7 @@ async def run(
     result_store: Optional[SQLiteResultStore] = None,
     workflow_yaml: Optional[Path] = None,
     log_file: Optional[str] = None,
+    provider_mode: str = "mock",
 ) -> WorkflowContext:
     """Run a single scenario through the full orchestrator pipeline.
 
@@ -178,6 +179,10 @@ async def run(
         result_store: Optional SQLiteResultStore. If provided, the run is persisted.
         workflow_yaml: Override the default workflow YAML for this scenario.
         log_file: Write structured JSON logs to this path (overrides settings.log_file).
+        provider_mode: One of:
+            - ``mock``   — StubLLM, hardcoded responses, no token needed (default)
+            - ``sample`` — Real LLM (GitHub Copilot) + pre-built sample fixtures
+            - ``live``   — Real LLM + real scanner API data (requires scanner tokens)
 
     Returns:
         Completed WorkflowContext.
@@ -185,7 +190,11 @@ async def run(
     settings = SentinelSettings()
     configure_logging(log_level=settings.log_level, log_file=log_file or settings.log_file)
 
-    llm = _build_stub_llm(scenario)
+    if provider_mode == "sample" or provider_mode == "live":
+        from conductor_integrations.llm.copilot import CopilotLLM
+        llm = CopilotLLM()
+    else:
+        llm = _build_stub_llm(scenario)
 
     from conductor_agents.agents.triage.agent import TriageAgent
     from conductor_agents.agents.planner.agent import PlannerAgent
@@ -430,6 +439,16 @@ if __name__ == "__main__":
         default=None,
         help="Write structured JSON logs to this file (e.g. --log-file /tmp/conductor.log)",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["mock", "sample", "live"],
+        default=os.environ.get("CONDUCTOR_PROVIDER_MODE", "mock"),
+        help=(
+            "LLM provider mode: mock=StubLLM (default), "
+            "sample=real LLM + sample fixtures (needs GITHUB_TOKEN), "
+            "live=real LLM + real scanner APIs"
+        ),
+    )
     args = parser.parse_args()
 
     store = SQLiteResultStore(args.store) if args.store else None
@@ -439,7 +458,7 @@ if __name__ == "__main__":
         wf_path = Path(args.workflow) if args.workflow else None
         # Pass log_file override; run() uses settings.log_file by default
         for sc in scenarios:
-            result = await run(sc, result_store=store, workflow_yaml=wf_path, log_file=args.log_file)
+            result = await run(sc, result_store=store, workflow_yaml=wf_path, log_file=args.log_file, provider_mode=args.mode)
             _print_result(result, scenario=sc)
         if store:
             print(f"\n💾 Results persisted to: {args.store}")

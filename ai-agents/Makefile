@@ -1,4 +1,4 @@
-.PHONY: setup test test-unit test-integration demo demo-snyk demo-sonar demo-blackduck demo-ado-defect demo-ado-story lint clean help
+.PHONY: setup test test-unit test-integration demo demo-snyk demo-sonar demo-blackduck demo-ado-defect demo-ado-story demo-sample demo-sample-snyk demo-sample-sonar demo-sample-blackduck demo-sample-ado-defect demo-sample-ado-story lint clean help
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -14,11 +14,13 @@ help:
 	@echo "  make test-unit          Run unit tests only (no LLM token required)"
 	@echo "  make test-integration   Run integration tests (requires GITHUB_TOKEN)"
 	@echo "  make demo               Run all 5 demo scenarios (mock mode)"
-	@echo "  make demo-snyk          Run Snyk CVE scenario"
-	@echo "  make demo-sonar         Run Sonar SAST scenario"
-	@echo "  make demo-blackduck     Run BlackDuck license scenario"
-	@echo "  make demo-ado-defect    Run ADO defect scenario"
-	@echo "  make demo-ado-story     Run ADO user story scenario"
+	@echo "  make demo-snyk          Run Snyk CVE scenario (mock)"
+	@echo "  make demo-sonar         Run Sonar SAST scenario (mock)"
+	@echo "  make demo-blackduck     Run BlackDuck license scenario (mock)"
+	@echo "  make demo-ado-defect    Run ADO defect scenario (mock)"
+	@echo "  make demo-ado-story     Run ADO user story scenario (mock)"
+	@echo "  make demo-sample        Run all 5 scenarios with real LLM (needs GITHUB_TOKEN)"
+	@echo "  make demo-sample-snyk   Run Snyk scenario with real LLM"
 	@echo "  make lint               Run ruff linter"
 	@echo "  make clean              Remove build artifacts and .venv"
 
@@ -84,6 +86,32 @@ demo-ado-defect:
 
 demo-ado-story:
 	@source $(VENV)/bin/activate && CONDUCTOR_PROVIDER_MODE=mock $(PYTHON) consumer-showcase/main.py --scenario ado-story
+
+demo-sample:
+	@for scenario in snyk sonar blackduck ado-defect ado-story; do \
+		echo ""; \
+		echo "═══════════════════════════════════════"; \
+		echo "  [sample mode] scenario: $$scenario"; \
+		echo "═══════════════════════════════════════"; \
+		$(PYTHON) consumer-showcase/main.py --scenario $$scenario --mode sample --store /tmp/runs_sample.db || exit 1; \
+	done
+	@echo ""
+	@echo "✅ All 5 sample scenarios completed (real LLM)"
+
+demo-sample-snyk:
+	@$(PYTHON) consumer-showcase/main.py --scenario snyk --mode sample --store /tmp/runs_sample.db
+
+demo-sample-sonar:
+	@$(PYTHON) consumer-showcase/main.py --scenario sonar --mode sample --store /tmp/runs_sample.db
+
+demo-sample-blackduck:
+	@$(PYTHON) consumer-showcase/main.py --scenario blackduck --mode sample --store /tmp/runs_sample.db
+
+demo-sample-ado-defect:
+	@$(PYTHON) consumer-showcase/main.py --scenario ado-defect --mode sample --store /tmp/runs_sample.db
+
+demo-sample-ado-story:
+	@$(PYTHON) consumer-showcase/main.py --scenario ado-story --mode sample --store /tmp/runs_sample.db
 
 lint:
 	$(VENV)/bin/ruff check conductor-core conductor-integrations consumer-showcase
