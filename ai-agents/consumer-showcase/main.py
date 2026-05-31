@@ -421,6 +421,31 @@ def _print_result(result: WorkflowContext, scenario: str = "") -> None:
     print("=" * 60)
 
 
+def _build_store(cli_path: str | None) -> IResultStore | None:
+    """Resolve the result store from --store CLI arg or CONDUCTOR_DB_URL env var.
+
+    URL scheme determines the implementation:
+    - ``sqlite+aiosqlite://...`` or bare filename  → SQLiteResultStore
+    - ``postgresql+asyncpg://...``                 → PostgresResultStore (must be installed)
+    - None / empty                                 → no persistence
+    """
+    url = cli_path or os.environ.get("CONDUCTOR_DB_URL", "")
+    if not url:
+        return None
+    if url.startswith("postgresql"):
+        try:
+            from conductor_core.stores.postgres_store import PostgresResultStore  # type: ignore[import]
+            return PostgresResultStore(url)
+        except ImportError:
+            raise ImportError(
+                "PostgresResultStore is not installed. "
+                "Run: pip install conductor-core[postgres]"
+            )
+    # sqlite+aiosqlite:///path or bare filename — extract the path part
+    path = url.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
+    return SQLiteResultStore(path)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Conductor consumer showcase")
     parser.add_argument(
@@ -465,7 +490,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    store = SQLiteResultStore(args.store) if args.store else None
+    # Build result store from --store path or CONDUCTOR_DB_URL env var.
+    # Reads the URL scheme to pick the right implementation — sqlite stays local,
+    # postgres delegates to PostgresResultStore (if installed).
+    store: IResultStore | None = _build_store(args.store)
 
     async def _main():
         scenarios = list(_SCENARIOS) if args.all else [args.scenario]
