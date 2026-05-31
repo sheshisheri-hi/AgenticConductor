@@ -6,7 +6,7 @@
   "severity": "MEDIUM",
   "description": "The function sum_to_n(n) in samples/ado/buggy_calculator.py uses range(1, n) which excludes n itself. For n=5 it returns 10 instead of the correct 15. The fix is to change range(1, n) to range(1, n + 1). Additionally, safe_divide() has no guard for b == 0 which causes ZeroDivisionError.",
   "url": "https://dev.azure.com/myorg/myproject/_workitems/edit/4242",
-  "repo_name": "sample-app",
+  "repo_name": "conductor-sample-app",
   "file_path": "samples/ado/buggy_calculator.py",
   "line_number": 17,
   "metadata": {

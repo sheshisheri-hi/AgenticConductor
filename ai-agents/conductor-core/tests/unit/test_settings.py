@@ -8,8 +8,10 @@ from pydantic import ValidationError
 from conductor_core.config.settings import ConductorSettings
 
 
-def test_defaults():
-    s = ConductorSettings()
+def test_defaults(monkeypatch):
+    monkeypatch.delenv("CONDUCTOR_CODE_EXECUTION_ENABLED", raising=False)
+    monkeypatch.delenv("CONDUCTOR_LOG_JSON", raising=False)
+    s = ConductorSettings(_env_file=None)
     assert s.provider_mode == "mock"
     assert s.code_execution_enabled is False
     assert s.confidence_threshold == 0.80
@@ -38,7 +40,7 @@ def test_invalid_provider_mode(monkeypatch):
 
 def test_code_execution_disabled_by_default(monkeypatch):
     monkeypatch.delenv("CONDUCTOR_CODE_EXECUTION_ENABLED", raising=False)
-    s = ConductorSettings()
+    s = ConductorSettings(_env_file=None)
     assert s.code_execution_enabled is False
 
 
@@ -60,8 +62,9 @@ def test_invalid_log_level(monkeypatch):
         ConductorSettings()
 
 
-def test_log_file_default_none():
-    s = ConductorSettings()
+def test_log_file_default_none(monkeypatch):
+    monkeypatch.delenv("CONDUCTOR_LOG_FILE", raising=False)
+    s = ConductorSettings(_env_file=None)
     assert s.log_file is None
 
 

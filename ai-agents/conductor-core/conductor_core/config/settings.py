@@ -38,7 +38,8 @@ class ConductorSettings(BaseSettings):
     #
     # Adversarial reviewer deliberately uses a *different* model so that its
     # critique is independent of the model that produced the plan/code.
-    reviewer_model: str = "gpt-4.1"  # override with CONDUCTOR_REVIEWER_MODEL
+    # Approved models: gpt-4.1, gpt-4.1-mini, gpt-4o, gpt-4-turbo, o1-preview, o3-mini
+    reviewer_model: str = "gpt-4o"  # override with CONDUCTOR_REVIEWER_MODEL; defaults to gpt-4o (differs from planner)
 
     # Agent behavior
     confidence_threshold: float = 0.80
@@ -72,7 +73,7 @@ class ConductorSettings(BaseSettings):
     @field_validator("provider_mode")
     @classmethod
     def validate_provider_mode(cls, v: str) -> str:
-        allowed = {"mock", "live"}
+        allowed = {"mock", "sample", "live", "integration"}
         if v.lower() not in allowed:
             raise ValueError(f"provider_mode must be one of {allowed}, got: {v!r}")
         return v.lower()

@@ -143,20 +143,20 @@ Set `CONDUCTOR_PROVIDER_MODE=live` in `.env` and provide scanner tokens:
 CONDUCTOR_PROVIDER_MODE=live
 
 # Snyk
-SENTINEL_SNYK_TOKEN=snyk-...
+CONSUMER_SNYK_TOKEN=snyk-...
 
 # SonarCloud
-SENTINEL_SONAR_TOKEN=...
-SENTINEL_SONAR_URL=https://sonarcloud.io
+CONSUMER_SONAR_TOKEN=...
+CONSUMER_SONAR_URL=https://sonarcloud.io
 
 # Black Duck
-SENTINEL_BLACKDUCK_TOKEN=...
-SENTINEL_BLACKDUCK_URL=https://your-bd-instance.example.com
+CONSUMER_BLACKDUCK_TOKEN=...
+CONSUMER_BLACKDUCK_URL=https://your-bd-instance.example.com
 
 # Azure DevOps
-SENTINEL_ADO_PAT=...
-SENTINEL_ADO_ORG=myorg
-SENTINEL_ADO_PROJECT=myproject
+CONSUMER_ADO_PAT=...
+CONSUMER_ADO_ORG=myorg
+CONSUMER_ADO_PROJECT=myproject
 ```
 
 Each source agent checks `CONDUCTOR_PROVIDER_MODE` and delegates to either the mock client or the real API client automatically.

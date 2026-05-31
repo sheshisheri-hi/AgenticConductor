@@ -12,14 +12,16 @@ Clone the repo and install all packages in editable mode:
 git clone https://github.com/sheshisheri-hi/AgenticConductor.git
 cd AgenticConductor/ai-agents
 
-# Recommended: use dev.sh (no manual venv activation needed)
+# Recommended: use dev.sh (handles venv creation + activation automatically)
 ./dev.sh setup
 
-# Alternative: manual setup
+# Alternative: manual setup (same result, more control)
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 make setup
 ```
+
+> **What does `pip install -e` do?** It registers the package in your Python virtualenv so you can `import conductor_core` (etc.) from anywhere. The `-e` (editable) flag means Python reads directly from the source folder — no files are copied. If you edit `conductor_core/base_agent.py`, your changes are immediately live without reinstalling. Nothing is published to PyPI or downloaded from the internet; it reads from your local clone.
 
 `make setup` (and `./dev.sh setup`) runs `pip install -e` for all packages in dependency order:
 1. `conductor-core` (base)

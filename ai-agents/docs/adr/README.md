@@ -11,6 +11,7 @@ This directory contains ADRs for the Conductor multi-agent framework.
 | [ADR-005](ADR-005-parallel-runners-not-group-chat.md) | Parallel runners via asyncio.gather (not group chat) | Accepted |
 | [ADR-006](ADR-006-plan-execute-mode-stop-before.md) | Plan vs Execute mode via stop_before flag | Accepted |
 | [ADR-007](ADR-007-stub-llm-mock-first-development.md) | StubLLM mock-first development pattern | Accepted |
+| [ADR-008](ADR-008-custom-orchestration-vs-langgraph.md) | Custom orchestration vs LangGraph | Accepted |
 
 ## Format
 

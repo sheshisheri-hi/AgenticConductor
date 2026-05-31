@@ -28,6 +28,17 @@ ai-agents/
 
 ---
 
+## 🛠 Which tool to use?
+
+| Tool | When to use |
+|---|---|
+| `./dev.sh <cmd>` | **Day-to-day development.** Manages the virtualenv for you — no `source .venv/bin/activate` needed. Preferred for running tests, demos, and sample mode. |
+| `make <target>` | **Shorthand aliases** for common dev.sh commands. `make demo` = `./dev.sh demo`. Same underlying logic; use whichever you prefer. |
+| `conductor <cmd>` | **Inspecting persisted results.** After a run, use the CLI to view runs, fix plans, reasoning traces, and audit logs: `conductor runs`, `conductor plan`, `conductor trace`. |
+| `python consumer-showcase/main.py` | **Advanced/scripted usage.** Pass custom flags (`--scenario`, `--workflow`, `--store`, `--mode`). Useful when you need full control not exposed via `dev.sh`. |
+
+---
+
 ## 👩‍💻 Path 1: Developer — Run the Samples
 
 You want to explore the framework, run the built-in demo scenarios, and see how it works end-to-end.
@@ -38,8 +49,55 @@ You want to explore the framework, run the built-in demo scenarios, and see how 
 |---|---|---|
 | Python | 3.11+ | [python.org](https://python.org) |
 | Git | any | — |
+| `gh` CLI | 2.x | `brew install gh` (macOS) / [cli.github.com](https://cli.github.com) |
+| GitHub Copilot extension | latest | `gh extension install github/gh-copilot` |
 
-> **Mock mode** (`CONDUCTOR_PROVIDER_MODE=mock`) requires **no LLM token** — all responses are stubs.
+> **Mock mode** (`CONDUCTOR_PROVIDER_MODE=mock`) requires **no tokens** — all LLM calls are instant stubs. The `gh` CLI + Copilot extension are only needed for `sample` / `integration` / `live` modes.
+
+### 2. Required environment variables
+
+Copy `.env.example` to `.env` and fill in the values you need:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required for | Description |
+|---|---|---|
+| `CONDUCTOR_GITHUB_TOKEN` | `sample`, `integration`, `live` | GitHub PAT — used for **both** Copilot LLM calls and git operations. Resolves via: `CONDUCTOR_GITHUB_TOKEN` → `GITHUB_COPILOT_TOKEN` → `COPILOT_GITHUB_TOKEN` → `GITHUB_TOKEN` (first non-empty wins). |
+| `GITHUB_ORG` | `integration` | GitHub org/user where test branches + PRs are created (e.g. `sheshisheri-hi`). |
+| `CONDUCTOR_PROVIDER_MODE` | always | `mock` (default, no token) / `sample` / `integration` / `live` |
+| `CONDUCTOR_DB_URL` | optional | SQLite path (default: `sqlite+aiosqlite:///conductor_runs.db`). Switch to `postgresql+asyncpg://...` for production. |
+| `SNYK_TOKEN`, `SONAR_TOKEN`, etc. | `live` only | Real scanner API tokens. See `.env.example` for full list. |
+
+### Provider Modes — Understanding the 4 Tiers
+
+`dev.sh` and `make` use `CONDUCTOR_PROVIDER_MODE` (or the optional 4th CLI argument) to control three independent runtime layers — LLM, data source, and git operations:
+
+| Mode | LLM | Data (Snyk/Sonar/ADO) | Git Operations | Tokens needed |
+|---|---|---|---|---|
+| `mock` | StubLLM (instant, free) | Fixture JSON | Stubbed (fake PR URLs) | None |
+| `sample` | Real Copilot (`gpt-4.1`) | Fixture JSON | Stubbed (fake PR URLs) | `GITHUB_TOKEN` (Copilot) |
+| `integration` | Real Copilot (`gpt-4.1`) | Fixture JSON | **Real branches + PRs** on test repos | `GITHUB_TOKEN` |
+| `live` | Real Copilot (`gpt-4.1`) | Real scanner APIs | Real branches + PRs on prod repos | `GITHUB_TOKEN` + scanner tokens |
+
+**Key insight:** `sample` and `integration` both use the same fixture JSON as input — the LLM reasons about pre-baked data. The difference is what happens *after* the plan is approved: `sample` prints fake git URLs; `integration` actually creates a branch, commits the LLM-generated fix, and opens a real PR in your configured test repos.
+
+```bash
+# No tokens — runs instantly, great for CI and first exploration
+./dev.sh demo snyk                  # mock (default)
+
+# Real LLM reasoning, no git side effects
+./dev.sh sample snyk                # sample mode — needs GITHUB_TOKEN for Copilot
+
+# Real LLM + real GitHub branches/PRs in your test repos
+./dev.sh sample snyk default integration   # integration mode
+
+# Real LLM + real scanner data + real git (production)
+CONDUCTOR_PROVIDER_MODE=live ./dev.sh sample snyk
+```
+
+> **Mock mode** requires **no tokens** — all LLM responses are stubs, all git URLs are fake.
 
 ### 2. Setup
 
@@ -207,51 +265,28 @@ SQLiteResultStore          (persist runs + decisions → query with conductor CL
 
 ---
 
-## Prerequisites
+## Tech Stack
 
-| Tool | Minimum version | Install |
+| Layer | Technology | Notes |
 |---|---|---|
-| Python | 3.11 | [python.org](https://python.org) |
-| `gh` CLI | 2.x | `brew install gh` |
-| Copilot extension | latest | `gh extension install github/gh-copilot` |
-
-> For mock mode (`CONDUCTOR_PROVIDER_MODE=mock`) no scanner tokens are needed.
-> Real LLM calls require `CONDUCTOR_LLM_PROVIDER` + `COPILOT_GITHUB_TOKEN` (or `GITHUB_TOKEN`).
-
----
-
-## How It Works
-
-```
-WorkflowContext (payload: dict)
-       │
-       ▼
-FilterEngine  ─── reject_if_in, reject_if_null, dedup (zero LLM cost)
-       │
-       ▼
-RouterEngine  ─── payload field matching → workflow graph selection
-       │
-       ▼
-WorkflowOrchestrator
-  ┌────────────────┐
-  │  stage loop    │
-  │  ┌──────────┐  │
-  │  │ agent    │◄─┤── BaseAgent (LLM) / FunctionalAgent (no LLM)
-  │  │ decision │  │
-  │  └──────────┘  │
-  │  transitions   │── YAML: on_proceed → next_stage
-  └────────────────┘
-       │
-       ▼
-WorkflowContext.decisions  (append-only audit trail)
-WorkflowContext.telemetry  (tokens / latency / recode_rounds)
-```
+| **Orchestration** | Custom pipeline (no LangGraph) | YAML-driven graph, sequential + parallel runners. See [ADR-008](docs/adr/ADR-008-custom-orchestration-vs-langgraph.md) for why LangGraph was considered and not adopted. |
+| **LLM** | GitHub Copilot SDK (`gpt-4.1`) | Pluggable via `ILLMProvider` — swap to OpenAI, Azure, Anthropic without changing agents. |
+| **Result store (dev)** | SQLite (`aiosqlite`) | Zero setup. Stores 2 tables: `runs` (summary per run) and `agent_decisions` (full prompt/response/reasoning per agent call). Configure path via `CONDUCTOR_DB_URL`. |
+| **Result store (prod)** | PostgreSQL | `docker compose up -d postgres`, set `CONDUCTOR_DB_URL=postgresql+asyncpg://...`. Same `IResultStore` interface — no code change. |
+| **Tracing** | OpenTelemetry | Per-stage spans with agent/token/confidence attributes. Silent no-op locally; plug in Jaeger/Honeycomb/Datadog via `CONDUCTOR_OTEL_ENDPOINT`. |
+| **Logging** | structlog (JSON) | Stdout by default. Set `CONDUCTOR_LOG_FILE=logs/conductor.log` to also write to file. |
+| **Packaging** | `pyproject.toml` (PEP 621) + `pip install -e` | Modern Python packaging standard (replaces `setup.py`). Used by FastAPI, Pydantic, and most major Python projects. |
+| **Task runner** | `Makefile` + `dev.sh` | Makefile is a thin alias layer over `dev.sh`. Both are standard tooling — Make is used by Linux kernel, NumPy, and most open-source projects. |
 
 ---
 
 ## Writing Your Own Consumer
 
-The fastest path is to **reuse existing agents** from `conductor-agents` and just write a workflow YAML:
+The fastest path is to **reuse existing agents** from `conductor-agents` and just write a workflow YAML.
+
+> **`ctx` = `WorkflowContext`** — the runtime object that flows through the entire pipeline. It holds the input `payload` (work item from your ingest/triage pipeline), accumulates `decisions` from each agent, and tracks `telemetry` (tokens, latency). You create it, the orchestrator runs it.
+
+> **`SQLiteResultStore`** is one implementation of the `IResultStore` interface. You can swap it for a `PostgresResultStore` (or write your own) without changing any agent or orchestrator code. The path/URL is set via `CONDUCTOR_DB_URL`.
 
 ```python
 # main.py — minimal new consumer
@@ -262,12 +297,13 @@ from conductor_core.stores.sqlite_store import SQLiteResultStore
 from conductor_agents import TriageAgent, PlannerAgent  # reuse existing agents
 
 graph = WorkflowGraph.from_yaml("config/workflow.yaml")
-store = SQLiteResultStore("runs.db")
+store = SQLiteResultStore("runs.db")  # or PostgresResultStore for production
 orch  = WorkflowOrchestrator(
     agents={"triage": TriageAgent(llm), "planner": PlannerAgent(llm)},
     graph=graph,
     result_store=store,
 )
+# ctx carries the work item from your ingest pipeline (Snyk webhook, ADO trigger, etc.)
 ctx    = WorkflowContext(run_id="X-001", payload={"work_item": item})
 result = await orch.run(ctx)
 ```
@@ -284,16 +320,25 @@ Key variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `CONDUCTOR_PROVIDER_MODE` | `mock` | `mock` or `live` |
+| `CONDUCTOR_PROVIDER_MODE` | `mock` | `mock` / `sample` / `integration` / `live` |
 | `CONDUCTOR_CODE_EXECUTION_ENABLED` | `false` | Enable execute mode |
-| `CONDUCTOR_LLM_MODEL` | `gpt-4o` | Default LLM model for all agents |
-| `CONDUCTOR_REVIEWER_MODEL` | `gpt-4o` | Model for adversarial ReviewerAgent |
+| `CONDUCTOR_LLM_MODEL` | `gpt-4.1` | Default LLM model for all agents |
+| `CONDUCTOR_REVIEWER_MODEL` | `gpt-4.1` | Model for adversarial ReviewerAgent |
 | `CONDUCTOR_LOG_LEVEL` | `INFO` | Log level |
 | `CONDUCTOR_CONFIDENCE_THRESHOLD` | `0.7` | Min confidence to proceed |
-| `COPILOT_GITHUB_TOKEN` | — | GitHub token for Copilot LLM |
+| `COPILOT_GITHUB_TOKEN` | — | GitHub token for Copilot LLM (sample/integration/live) |
 | `CONDUCTOR_DB_URL` | `sqlite+aiosqlite:///conductor_runs.db` | Result store database URL |
 | `CONDUCTOR_OTEL_ENDPOINT` | _(none)_ | OTLP gRPC endpoint for traces |
 | `CONDUCTOR_OTEL_SERVICE_NAME` | `conductor` | Service name in trace UIs |
+| `GITHUB_ORG` | — | GitHub org/user for real git ops (integration/live) |
+| `CONDUCTOR_BRANCH_PREFIX` | `conductor` | Branch prefix for real git ops |
+| `CONDUCTOR_GIT_EMAIL` | `conductor-bot@users.noreply.github.com` | Git commit author email |
+| `SNYK_TOKEN` | — | Snyk API token (live mode only) |
+| `SNYK_ORG_ID` | — | Snyk organisation ID (live mode only) |
+| `SONAR_URL` | — | SonarQube server URL (live mode only) |
+| `SONAR_TOKEN` | — | SonarQube user token (live mode only) |
+| `ADO_ORG` | — | Azure DevOps org URL e.g. `https://dev.azure.com/myorg` (live mode only) |
+| `ADO_PAT` | — | Azure DevOps Personal Access Token (live mode only) |
 
 ---
 
@@ -355,10 +400,65 @@ CONDUCTOR_OTEL_SERVICE_NAME=conductor
 
 ## Running Tests
 
+Conductor has three test levels. Each level adds more real external dependencies:
+
+### Level 1 — Unit tests (fast, zero tokens, CI-safe)
+
 ```bash
-make test              # all unit tests (fast, no LLM)
-make test-unit         # same as above
-make test-integration  # real LLM calls (requires COPILOT_GITHUB_TOKEN)
+./dev.sh test          # 176 tests across all 3 packages, ~0.5s
+```
+
+Uses `StubLLM` (pre-canned responses), mock ingest clients (fixture JSON), and `MockGitAgent` (no real git ops). No tokens or network required. Run these in CI on every push.
+
+### Level 2 — Pipeline tests (full wiring, still no real services)
+
+```bash
+./dev.sh test-integration   # 57 tests, all 5 workflows × all scenarios, ~1s
+```
+
+Runs the **complete orchestrator pipeline** end-to-end — `WorkflowOrchestrator → all 11 agents → WorkflowGraph → SQLiteResultStore` — but still with `StubLLM` and fixture data. Validates:
+- All 5 workflow YAMLs produce the correct number of decisions
+- Parallel agent groups (`review_gate`, `notify_feedback`) execute correctly
+- Agent ordering is correct (e.g. `scribe` before `git`)
+- Filters reject INFO/LOW severity before agents run
+- Results persist correctly to SQLite
+
+> **Note:** These are sometimes called "integration tests" in the pytest folder but are more accurately *pipeline/system tests with stubs* — no real LLM or scanner APIs are called.
+
+### Level 3 — Real LLM + real GitHub (requires `GITHUB_TOKEN`)
+
+```bash
+# Real LLM (CopilotLLM / gpt-4.1) + fixture data + stub git
+./dev.sh sample snyk
+
+# Real LLM + fixture data + REAL GitHub branches/PRs in conductor-sample-app
+export GITHUB_TOKEN=your_token
+export GITHUB_ORG=sheshisheri-hi
+./dev.sh sample snyk default integration        # one scenario
+./dev.sh sample-all default integration         # all 5 scenarios
+
+# Cleanup branches/PRs created by integration run
+./dev.sh clean-integration
+```
+
+### Level 4 — Live mode (all real: LLM + scanner APIs + git)
+
+```bash
+# Requires SNYK_TOKEN, SONAR_TOKEN, BLACKDUCK_TOKEN, ADO_PAT + GITHUB_TOKEN
+CONDUCTOR_PROVIDER_MODE=live ./dev.sh sample snyk
+```
+
+### Test command summary
+
+| Command | LLM | Data | Git | Token needed |
+|---|---|---|---|---|
+| `./dev.sh test` | StubLLM | Fixture | MockGit | None |
+| `./dev.sh test-integration` | StubLLM | Fixture | MockGit | None |
+| `./dev.sh sample snyk` | CopilotLLM | Fixture | MockGit | `GITHUB_TOKEN` |
+| `./dev.sh sample snyk default integration` | CopilotLLM | Fixture | **Real GitHub** | `GITHUB_TOKEN` + `GITHUB_ORG` |
+| `CONDUCTOR_PROVIDER_MODE=live ./dev.sh sample snyk` | CopilotLLM | **Real APIs** | **Real GitHub** | All tokens |
+
+```bash
 make lint              # ruff check across all packages
 ```
 

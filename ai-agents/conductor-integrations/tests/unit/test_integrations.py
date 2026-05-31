@@ -79,10 +79,11 @@ def test_factory_unknown_source_raises(monkeypatch):
         create_ingest_client("jira")  # type: ignore
 
 
-def test_factory_live_mode_raises(monkeypatch):
+def test_factory_live_mode_returns_real_client(monkeypatch):
     monkeypatch.setenv("CONDUCTOR_PROVIDER_MODE", "live")
-    with pytest.raises(NotImplementedError):
-        create_ingest_client("snyk")
+    from conductor_integrations.sources.snyk import SnykClient
+    client = create_ingest_client("snyk")
+    assert isinstance(client, SnykClient)
 
 
 # ── mock git agent ────────────────────────────────────────────────────────────

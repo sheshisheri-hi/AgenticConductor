@@ -26,9 +26,10 @@ from conductor_core.context import WorkflowContext
 from conductor_core.graph import WorkflowGraph
 from conductor_core.orchestrator import WorkflowOrchestrator
 from conductor_core.stores.sqlite_store import SQLiteResultStore
+from conductor_core.interfaces import IResultStore
 from conductor_integrations.sources.factory import create_ingest_client
 
-from consumer_showcase.config.settings import SentinelSettings
+from consumer_showcase.config.settings import ConsumerSettings
 
 log = get_logger(__name__)
 
@@ -167,7 +168,7 @@ _STUB_TRIAGE = {
 
 async def run(
     scenario: str,
-    result_store: Optional[SQLiteResultStore] = None,
+    result_store: Optional[IResultStore] = None,
     workflow_yaml: Optional[Path] = None,
     log_file: Optional[str] = None,
     provider_mode: str = "mock",
@@ -176,21 +177,26 @@ async def run(
 
     Args:
         scenario: One of snyk/sonar/blackduck/ado-defect/ado-story.
-        result_store: Optional SQLiteResultStore. If provided, the run is persisted.
+        result_store: Optional IResultStore implementation. If provided, the run is persisted.
+                      Defaults to SQLiteResultStore when --store path is given on CLI.
+                      Swap for PostgresResultStore (or any IResultStore impl) for production.
         workflow_yaml: Override the default workflow YAML for this scenario.
         log_file: Write structured JSON logs to this path (overrides settings.log_file).
         provider_mode: One of:
-            - ``mock``   — StubLLM, hardcoded responses, no token needed (default)
-            - ``sample`` — Real LLM (GitHub Copilot) + pre-built sample fixtures
-            - ``live``   — Real LLM + real scanner API data (requires scanner tokens)
+            - ``mock``        — StubLLM, hardcoded responses, no token needed (default)
+            - ``sample``      — Real LLM (GitHub Copilot) + pre-built sample fixtures + stub git
+            - ``integration`` — Real LLM + sample fixtures + REAL git ops on test repos (needs GITHUB_TOKEN + GITHUB_ORG)
+            - ``live``        — Real LLM + real scanner APIs + real git ops on prod repos
 
     Returns:
         Completed WorkflowContext.
     """
-    settings = SentinelSettings()
+    settings = ConsumerSettings()
+    from conductor_core.config.settings import ConductorSettings
+    core_settings = ConductorSettings()
     configure_logging(log_level=settings.log_level, log_file=log_file or settings.log_file)
 
-    if provider_mode == "sample" or provider_mode == "live":
+    if provider_mode in ("sample", "integration", "live"):
         from conductor_integrations.llm.copilot import CopilotLLM
         llm = CopilotLLM()
     else:
@@ -207,6 +213,12 @@ async def run(
     from conductor_agents.agents.notify.agent import NotifyAgent
     from conductor_agents.agents.feedback.agent import FeedbackAgent
 
+    if provider_mode in ("integration", "live"):
+        from conductor_integrations.git.real_git_agent import RealGitAgent
+        git_agent = RealGitAgent()
+    else:
+        git_agent = GitAgent()
+
     agents = {
         "triage": TriageAgent(llm),
         "security_analyst": SecurityAnalystAgent(llm),
@@ -216,7 +228,7 @@ async def run(
         "security_gatekeeper": SecurityGatekeeperAgent(llm),
         "reviewer": ReviewerAgent(llm),
         "scribe": ScribeAgent(llm),
-        "git": GitAgent(),
+        "git": git_agent,
         "notify": NotifyAgent(),
         "feedback": FeedbackAgent(),
     }
@@ -231,12 +243,15 @@ async def run(
 
     ctx = WorkflowContext(
         run_id=f"{item.id}-demo",
-        payload={"work_item": item.model_dump()},
-        mode="plan",
+        payload={
+            "work_item": item.model_dump(),
+            "github_org": settings.github_org,
+        },
+        mode="execute" if core_settings.code_execution_enabled else "plan",
     )
 
     log.info("demo.starting", scenario=scenario, item_id=item.id, severity=item.severity)
-    result = await orch.run(ctx)
+    result = await orch.run(ctx, mode=ctx.mode)
     log.info(
         "demo.complete",
         scenario=scenario,
@@ -408,6 +423,31 @@ def _print_result(result: WorkflowContext, scenario: str = "") -> None:
     print("=" * 60)
 
 
+def _build_store(cli_path: str | None) -> IResultStore | None:
+    """Resolve the result store from --store CLI arg or CONDUCTOR_DB_URL env var.
+
+    URL scheme determines the implementation:
+    - ``sqlite+aiosqlite://...`` or bare filename  → SQLiteResultStore
+    - ``postgresql+asyncpg://...``                 → PostgresResultStore (must be installed)
+    - None / empty                                 → no persistence
+    """
+    url = cli_path or os.environ.get("CONDUCTOR_DB_URL", "")
+    if not url:
+        return None
+    if url.startswith("postgresql"):
+        try:
+            from conductor_core.stores.postgres_store import PostgresResultStore  # type: ignore[import]
+            return PostgresResultStore(url)
+        except ImportError:
+            raise ImportError(
+                "PostgresResultStore is not installed. "
+                "Run: pip install conductor-core[postgres]"
+            )
+    # sqlite+aiosqlite:///path or bare filename — extract the path part
+    path = url.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
+    return SQLiteResultStore(path)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Conductor consumer showcase")
     parser.add_argument(
@@ -441,17 +481,21 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["mock", "sample", "live"],
+        choices=["mock", "sample", "integration", "live"],
         default=os.environ.get("CONDUCTOR_PROVIDER_MODE", "mock"),
         help=(
-            "LLM provider mode: mock=StubLLM (default), "
-            "sample=real LLM + sample fixtures (needs GITHUB_TOKEN), "
-            "live=real LLM + real scanner APIs"
+            "Provider mode: mock=StubLLM+fixtures+stub-git (default), "
+            "sample=real LLM+fixtures+stub-git (needs GITHUB_TOKEN), "
+            "integration=real LLM+fixtures+REAL git on test repos (needs GITHUB_TOKEN+GITHUB_ORG), "
+            "live=real LLM+real scanner APIs+real git"
         ),
     )
     args = parser.parse_args()
 
-    store = SQLiteResultStore(args.store) if args.store else None
+    # Build result store from --store path or CONDUCTOR_DB_URL env var.
+    # Reads the URL scheme to pick the right implementation — sqlite stays local,
+    # postgres delegates to PostgresResultStore (if installed).
+    store: IResultStore | None = _build_store(args.store)
 
     async def _main():
         scenarios = list(_SCENARIOS) if args.all else [args.scenario]
