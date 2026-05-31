@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conductor-cli"
+version = "0.1.0"
+description = "Conductor CLI — command-line interface for the Conductor multi-agent framework"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.9",
+    "rich>=13",
+    "aiosqlite>=0.19",
+    "conductor-core",
+]
+
+[project.scripts]
+conductor = "conductor_cli.main:app"
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["conductor_cli*"]

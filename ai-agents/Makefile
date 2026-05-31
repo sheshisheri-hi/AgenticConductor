@@ -31,6 +31,7 @@ setup:
 	$(PIP) install -e "conductor-agents[dev]" --quiet
 	$(PIP) install -e "conductor-integrations[dev]" --quiet
 	$(PIP) install -e "consumer-showcase[dev]" --quiet
+	$(PIP) install -e "conductor-cli[dev]" --quiet
 	@if [ ! -f .env ]; then cp .env.example .env && echo "📝 Created .env from .env.example — add your GITHUB_TOKEN"; fi
 	@echo "✅ Setup complete. Run: make demo"
 
