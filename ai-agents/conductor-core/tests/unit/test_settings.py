@@ -14,7 +14,7 @@ def test_defaults():
     assert s.code_execution_enabled is False
     assert s.confidence_threshold == 0.80
     assert s.max_enrichment_rounds == 3
-    assert s.llm_model == "gpt-4o"
+    assert s.llm_model == "gpt-4.1"
     assert s.log_json is True
 
 

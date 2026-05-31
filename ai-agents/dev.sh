@@ -121,6 +121,29 @@ case "$CMD" in
     ok "All tests passed."
     ;;
 
+  clean)
+    # ./dev.sh clean         → remove venv + build artifacts
+    # ./dev.sh clean db      → remove SQLite DBs only
+    # ./dev.sh clean all     → remove everything
+    WHAT="${2:-venv}"
+    if [[ "$WHAT" == "db" ]]; then
+      rm -f /tmp/runs.db /tmp/runs_sample.db conductor_runs.db
+      ok "SQLite databases removed"
+    elif [[ "$WHAT" == "all" ]]; then
+      rm -rf "$VENV"
+      find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+      find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+      rm -f /tmp/runs.db /tmp/runs_sample.db conductor_runs.db
+      ok "Full clean done (venv + build artifacts + databases)"
+    else
+      rm -rf "$VENV"
+      find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+      find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+      ok "Cleaned venv + build artifacts (databases kept)"
+      echo "  Run './dev.sh clean db' to also remove SQLite databases"
+    fi
+    ;;
+
   runs)
     # ./dev.sh runs          → list mock runs
     # ./dev.sh runs sample   → list sample runs
@@ -182,6 +205,9 @@ case "$CMD" in
     echo ""
     echo "  Other:"
     echo "    ./dev.sh test                   — run all unit tests"
+    echo "    ./dev.sh clean                  — remove venv + build artifacts"
+    echo "    ./dev.sh clean db               — remove SQLite databases (/tmp/runs*.db)"
+    echo "    ./dev.sh clean all              — remove everything (venv + artifacts + DBs)"
     echo ""
     echo "  Scenarios: snyk sonar blackduck ado-defect ado-story"
     exit 1

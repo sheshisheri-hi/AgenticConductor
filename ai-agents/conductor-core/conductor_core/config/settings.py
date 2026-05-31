@@ -29,7 +29,7 @@ class ConductorSettings(BaseSettings):
     provider_mode: str = "mock"
 
     # LLM
-    llm_model: str = "gpt-4o"
+    llm_model: str = "gpt-4.1"
     max_llm_retries: int = 3
 
     # Per-agent model overrides.  These are fallback defaults — agents can also
@@ -38,7 +38,7 @@ class ConductorSettings(BaseSettings):
     #
     # Adversarial reviewer deliberately uses a *different* model so that its
     # critique is independent of the model that produced the plan/code.
-    reviewer_model: str = "gpt-4o"  # override with CONDUCTOR_REVIEWER_MODEL
+    reviewer_model: str = "gpt-4.1"  # override with CONDUCTOR_REVIEWER_MODEL
 
     # Agent behavior
     confidence_threshold: float = 0.80

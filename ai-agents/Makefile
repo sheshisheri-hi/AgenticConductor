@@ -1,4 +1,4 @@
-.PHONY: setup test test-unit test-integration demo demo-snyk demo-sonar demo-blackduck demo-ado-defect demo-ado-story demo-sample demo-sample-snyk demo-sample-sonar demo-sample-blackduck demo-sample-ado-defect demo-sample-ado-story lint clean help
+.PHONY: setup test test-unit test-integration demo demo-snyk demo-sonar demo-blackduck demo-ado-defect demo-ado-story demo-sample demo-sample-snyk demo-sample-sonar demo-sample-blackduck demo-sample-ado-defect demo-sample-ado-story lint clean clean-db clean-all help
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -123,4 +123,11 @@ clean:
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name "dist" -exec rm -rf {} + 2>/dev/null || true
-	@echo "✅ Cleaned"
+	@echo "✅ Cleaned (venv + build artifacts)"
+
+clean-db:
+	rm -f /tmp/runs.db /tmp/runs_sample.db conductor_runs.db
+	@echo "✅ SQLite databases removed"
+
+clean-all: clean clean-db
+	@echo "✅ Full clean done"

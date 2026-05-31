@@ -12,24 +12,38 @@ Clone the repo and install all packages in editable mode:
 git clone https://github.com/sheshisheri-hi/AgenticConductor.git
 cd AgenticConductor/ai-agents
 
+# Recommended: use dev.sh (no manual venv activation needed)
+./dev.sh setup
+
+# Alternative: manual setup
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
 make setup
 ```
 
-`make setup` runs `pip install -e` for all packages in dependency order:
+`make setup` (and `./dev.sh setup`) runs `pip install -e` for all packages in dependency order:
 1. `conductor-core` (base)
 2. `conductor-agents` (depends on core)
-3. `conductor-integrations` (depends on core)
+3. `conductor-integrations[dev,copilot]` (depends on core; includes `github-copilot-sdk`)
 4. `consumer-showcase` (depends on all)
 5. `conductor-cli` (depends on core)
 
-To install individually:
+**After setup**, verify your GitHub Copilot token is configured:
+```bash
+./dev.sh check
+# or: .venv/bin/conductor check
+```
+
+Token priority order (first non-empty env var wins):
+```
+CONDUCTOR_GITHUB_TOKEN → GITHUB_COPILOT_TOKEN → COPILOT_GITHUB_TOKEN → GITHUB_TOKEN
+```
+
+To install packages individually:
 ```bash
 pip install -e "conductor-core[dev]"
 pip install -e "conductor-agents[dev]"
-pip install -e "conductor-integrations[dev]"
+pip install -e "conductor-integrations[dev,copilot]"
 pip install -e "consumer-showcase[dev]"
 pip install -e "conductor-cli[dev]"
 ```

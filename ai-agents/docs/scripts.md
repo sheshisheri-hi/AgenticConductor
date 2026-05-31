@@ -1,38 +1,62 @@
 # Scripts Reference
 
-Operational commands are provided by the **`conductor` CLI** (`conductor-cli` package).
+Operational commands are provided by two entry points:
 
-Install it once with `make setup` or `pip install -e "conductor-cli"`, then use:
+- **`dev.sh`** — one-stop developer script; handles setup, demos, and result viewing **without ever needing `source .venv/bin/activate`**
+- **`conductor` CLI** — installed into `.venv` by `make setup`; provides `runs`, `plan`, `trace`, `all`, `logs`, `clean`, `check`
 
 ---
 
-## Quick Reference
+## Quick Reference — dev.sh (recommended)
 
 ```bash
-# From ai-agents/ with .venv active
-cd NewFramework/ai-agents && source .venv/bin/activate
+cd NewFramework/ai-agents
 
-# Run all 5 demo scenarios
-python consumer-showcase/main.py --all --store /tmp/runs.db
+# First-time setup (creates .venv, installs all packages including github-copilot-sdk)
+./dev.sh setup
 
-# List all runs
+# Verify GitHub Copilot token + SDK access
+./dev.sh check
+
+# Run mock demo (no token needed — instant, hardcoded responses)
+./dev.sh demo snyk
+./dev.sh demo-all              # all 5 scenarios
+
+# Run sample demo (real LLM via GitHub Copilot SDK)
+./dev.sh sample snyk
+./dev.sh sample-all            # all 5 scenarios
+
+# View results
+./dev.sh runs                  # list mock runs
+./dev.sh runs sample           # list sample (real LLM) runs
+./dev.sh plan SNYK-001-demo
+./dev.sh plan SNYK-001-demo sample   # from sample DB
+./dev.sh trace SNYK-001-demo
+
+# Run tests
+./dev.sh test
+
+# Clean
+./dev.sh clean                 # remove venv + build artifacts (keeps DBs)
+./dev.sh clean db              # remove SQLite databases only (/tmp/runs*.db)
+./dev.sh clean all             # everything
+```
+
+## Quick Reference — conductor CLI (manual / scripting)
+
+```bash
+# No source needed — use full venv path
+.venv/bin/conductor runs --store /tmp/runs.db
+.venv/bin/conductor plan SNYK-001-demo --store /tmp/runs.db
+.venv/bin/conductor trace SNYK-001-demo --store /tmp/runs.db
+.venv/bin/conductor all --store /tmp/runs.db
+.venv/bin/conductor check
+```
+
+Or activate the venv first:
+```bash
+source .venv/bin/activate
 conductor runs --store /tmp/runs.db
-
-# Show fix plan
-conductor plan SNYK-001-demo --store /tmp/runs.db
-
-# Full trace (reasoning + prompts + model)
-conductor trace SNYK-001-demo --store /tmp/runs.db
-
-# Everything (all runs + traces + plans)
-conductor all --store /tmp/runs.db
-
-# View structured logs
-conductor logs --events
-conductor logs --run SNYK-001-demo
-
-# Clean / delete a run
-conductor clean SNYK-001-demo --store /tmp/runs.db
 ```
 
 ---
@@ -47,24 +71,35 @@ python consumer-showcase/main.py [OPTIONS]
 |---|---|---|
 | `--scenario` | One scenario: `snyk`, `sonar`, `blackduck`, `ado-defect`, `ado-story` | — |
 | `--all` | Run all 5 scenarios | — |
+| `--mode` | LLM mode: `mock`, `sample`, `live` | `mock` |
 | `--store PATH` | SQLite database path | `conductor_runs.db` |
 | `--workflow PATH` | Override workflow YAML | scenario-default |
 | `--log-file PATH` | Write structured JSON logs to file | none |
 
+**LLM Modes:**
+
+| Mode | LLM | Token Required | Speed | Use Case |
+|---|---|---|---|---|
+| `mock` | StubLLM (hardcoded) | No | Instant | CI, demos, dev iteration |
+| `sample` | GitHub Copilot SDK (`gpt-4.1`) | Yes (`GITHUB_COPILOT_TOKEN`) | ~3–6s/agent | Real LLM testing with fixtures |
+| `live` | GitHub Copilot SDK + live APIs | Yes | Variable | Full production run |
+
 **Examples:**
 ```bash
-# Single scenario
+# Mock mode (default) — no token needed
 python consumer-showcase/main.py --scenario snyk --store /tmp/runs.db
+
+# Sample mode — real GitHub Copilot LLM
+python consumer-showcase/main.py --scenario snyk --mode sample --store /tmp/runs_sample.db
 
 # All scenarios with logs
 python consumer-showcase/main.py --all --store /tmp/runs.db --log-file /tmp/conductor.log
 
 # Custom workflow YAML
 python consumer-showcase/main.py --scenario snyk --workflow config/workflow_adversarial.yaml --store /tmp/runs.db
-
-# Via environment variable
-DEMO_SCENARIO=sonar python consumer-showcase/main.py --store /tmp/runs.db
 ```
+
+> **Tip:** Use `./dev.sh demo snyk` (mock) or `./dev.sh sample snyk` (real LLM) — they verify the token and handle the DB path automatically.
 
 ---
 
@@ -155,6 +190,25 @@ conductor all --store /tmp/runs.db --no-trace   # plans only
 
 ---
 
+## conductor check — Verify Token + Copilot Access
+
+```
+conductor check
+```
+
+Verifies:
+- GitHub token found in env (`CONDUCTOR_GITHUB_TOKEN`, `GITHUB_COPILOT_TOKEN`, `COPILOT_GITHUB_TOKEN`, or `GITHUB_TOKEN`)
+- `github-copilot-sdk` installed
+- Copilot SDK can authenticate and start
+
+```bash
+conductor check
+# or via dev.sh:
+./dev.sh check
+```
+
+---
+
 ## conductor logs — Structured Log Viewer
 
 ```
@@ -222,17 +276,25 @@ From `ai-agents/` root:
 
 ```bash
 make setup              # create .venv, install all packages (run once)
-make test               # run all 116 tests
+make test               # run all unit tests
 make test-unit          # unit tests only
 make test-integration   # integration tests only
-make demo               # run all 5 demo scenarios
-make demo-snyk          # run Snyk CVE scenario only
-make demo-sonar         # run SonarQube scenario only
-make demo-blackduck     # run BlackDuck scenario only
-make demo-ado-defect    # run ADO defect scenario only
-make demo-ado-story     # run ADO story scenario only
+
+make demo               # run all 5 mock demo scenarios
+make demo-snyk          # run Snyk CVE scenario (mock)
+make demo-sonar         # run SonarQube scenario (mock)
+make demo-blackduck     # run BlackDuck scenario (mock)
+make demo-ado-defect    # run ADO defect scenario (mock)
+make demo-ado-story     # run ADO story scenario (mock)
+
+make demo-sample        # run all 5 scenarios with real LLM (needs token)
+make demo-sample-snyk   # run Snyk with real LLM
+make demo-sample-sonar  # run SonarQube with real LLM
+
 make lint               # run ruff linter
 make clean              # remove .venv, __pycache__, *.egg-info, dist/
+make clean-db           # remove SQLite databases (/tmp/runs.db, /tmp/runs_sample.db)
+make clean-all          # clean + clean-db (everything)
 ```
 
 ---
@@ -250,37 +312,3 @@ make clean              # remove .venv, __pycache__, *.egg-info, dist/
 make clean   # remove all build artifacts
 make setup   # recreate them
 ```
-
-
----
-
-## main.py — Run Scenarios
-
-```
-python consumer-showcase/main.py [OPTIONS]
-```
-
-| Option | Description | Default |
-|---|---|---|
-| `--scenario` | One scenario: `snyk`, `sonar`, `blackduck`, `ado-defect`, `ado-story` | — |
-| `--all` | Run all 5 scenarios | — |
-| `--store PATH` | SQLite database path | `conductor_runs.db` |
-| `--workflow PATH` | Override workflow YAML | scenario-default |
-| `--log-file PATH` | Write structured JSON logs to file | none |
-
-**Examples:**
-```bash
-# Single scenario
-python consumer-showcase/main.py --scenario snyk --store /tmp/runs.db
-
-# All scenarios with logs
-python consumer-showcase/main.py --all --store /tmp/runs.db --log-file /tmp/conductor.log
-
-# Custom workflow YAML
-python consumer-showcase/main.py --scenario snyk --workflow config/workflow_adversarial.yaml --store /tmp/runs.db
-
-# Via environment variable
-DEMO_SCENARIO=sonar python consumer-showcase/main.py --store /tmp/runs.db
-```
-
----
