@@ -15,13 +15,18 @@ def create_ingest_client(
 ) -> BaseIngestClient:
     """Return the appropriate ingest client.
 
-    When CONDUCTOR_PROVIDER_MODE=mock (the default) all sources return their
-    pre-baked JSON fixtures. In live mode the real SDK clients are returned
-    (require credentials in env).
+    Mode mapping:
+      - mock        → fixture JSON, no tokens needed
+      - sample      → fixture JSON, no scanner tokens (real LLM handled elsewhere)
+      - integration → fixture JSON, no scanner tokens (real git handled elsewhere)
+      - live        → real scanner API clients (require credentials in env)
     """
     mode = os.environ.get("CONDUCTOR_PROVIDER_MODE", "mock").lower()
 
-    if mode == "mock":
+    if mode in ("mock", "sample", "integration"):
+        # mock + sample + integration all use fixture JSON for source data.
+        # The difference between sample and integration is in the git agent,
+        # not the ingest client — so we return mock clients for all three.
         from conductor_integrations.sources.mock_snyk import MockSnykClient
         from conductor_integrations.sources.mock_sonar import MockSonarClient
         from conductor_integrations.sources.mock_blackduck import MockBlackDuckClient

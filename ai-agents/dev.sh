@@ -2,15 +2,18 @@
 # dev.sh — One-shot developer setup + run script
 #
 # Usage:
-#   ./dev.sh                               # setup venv + run mock demo (snyk)
-#   ./dev.sh setup                         # setup only (venv + install all packages)
-#   ./dev.sh demo [scenario] [workflow]    # run mock demo (no token needed)
-#   ./dev.sh sample [scenario] [workflow]  # run sample demo (needs GITHUB_COPILOT_TOKEN)
-#   ./dev.sh check                         # verify token + Copilot access
-#   ./dev.sh test                          # run all unit tests
+#   ./dev.sh                                           # setup venv + run mock demo (snyk)
+#   ./dev.sh setup                                     # setup only (venv + install all packages)
+#   ./dev.sh demo [scenario] [workflow]                # mock demo — StubLLM + fixtures, no token needed
+#   ./dev.sh sample [scenario] [workflow]              # sample demo — real LLM + fixtures, stub git
+#   ./dev.sh sample [scenario] [workflow] integration  # integration — real LLM + fixtures + REAL git/PRs
+#   ./dev.sh check                                     # verify token + Copilot access
+#   ./dev.sh test                                      # run all unit tests
+#   ./dev.sh clean-integration                         # delete conductor/* branches + open PRs in test repos
 #
 # Scenarios: snyk sonar blackduck ado-defect ado-story (default: snyk)
 # Workflows: default | security | adversarial | ado | execute (default: default)
+# Provider modes: mock | sample | integration | live (default depends on command)
 
 set -euo pipefail
 
@@ -62,6 +65,7 @@ ensure_venv() {
 CMD="${1:-demo}"
 SCENARIO="${2:-snyk}"
 WORKFLOW_ARG="${3:-default}"
+PROVIDER_ARG="${4:-}"  # optional: integration | live (overrides default for the command)
 
 # Resolve workflow YAML path from short name
 # Usage: WORKFLOW_FILE=$(resolve_workflow "adversarial")
@@ -116,10 +120,14 @@ case "$CMD" in
   sample)
     ensure_venv
     WFILE=$(resolve_workflow "$WORKFLOW_ARG")
-    log "Checking token before running sample mode..."
+    PMODE="${PROVIDER_ARG:-sample}"
+    if [[ "$PMODE" != "sample" && "$PMODE" != "integration" && "$PMODE" != "live" ]]; then
+      err "Unknown provider mode '$PMODE'. Valid 4th arg: sample | integration | live"
+    fi
+    log "Checking token before running $PMODE mode..."
     "$VENV/bin/conductor" check
-    log "Running sample demo (real LLM) — scenario: $SCENARIO  workflow: $WORKFLOW_ARG"
-    "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode sample --workflow "$WFILE" --store /tmp/runs_sample.db
+    log "Running $PMODE demo (real LLM) — scenario: $SCENARIO  workflow: $WORKFLOW_ARG  mode: $PMODE"
+    "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode "$PMODE" --workflow "$WFILE" --store /tmp/runs_sample.db
     echo ""
     ok "Done. View results:"
     echo "    ./dev.sh runs sample"
@@ -129,10 +137,14 @@ case "$CMD" in
   sample-all)
     ensure_venv
     WFILE=$(resolve_workflow "$WORKFLOW_ARG")
-    log "Checking token before running sample mode..."
+    PMODE="${PROVIDER_ARG:-sample}"
+    if [[ "$PMODE" != "sample" && "$PMODE" != "integration" && "$PMODE" != "live" ]]; then
+      err "Unknown provider mode '$PMODE'. Valid 4th arg: sample | integration | live"
+    fi
+    log "Checking token before running $PMODE mode..."
     "$VENV/bin/conductor" check
-    log "Running all 5 sample scenarios (real LLM, workflow: $WORKFLOW_ARG)..."
-    "$PYTHON" consumer-showcase/main.py --all --mode sample --workflow "$WFILE" --store /tmp/runs_sample.db
+    log "Running all 5 $PMODE scenarios (real LLM, workflow: $WORKFLOW_ARG)..."
+    "$PYTHON" consumer-showcase/main.py --all --mode "$PMODE" --workflow "$WFILE" --store /tmp/runs_sample.db
     echo ""
     ok "Done. View results: ./dev.sh runs sample"
     ;;
@@ -206,6 +218,43 @@ case "$CMD" in
     "$VENV/bin/conductor" trace "$RUN_ID" --store "$STORE"
     ;;
 
+  clean-integration)
+    # Delete all conductor/* branches + open PRs from test repos after integration testing
+    ensure_venv
+    ORG="${GITHUB_ORG:-sheshisheri-hi}"
+    REPO="${CONDUCTOR_INTEGRATION_REPO:-conductor-sample-app}"
+    TOKEN="${GITHUB_TOKEN:-${CONDUCTOR_GITHUB_TOKEN:-}}"
+    if [ -z "$TOKEN" ]; then
+      err "GITHUB_TOKEN or CONDUCTOR_GITHUB_TOKEN must be set to clean integration branches"
+    fi
+    log "Cleaning conductor/* branches and open PRs in $ORG/$REPO..."
+    # List and close open PRs with conductor/* head branches
+    OPEN_PRS=$(curl -sf -H "Authorization: token $TOKEN" \
+      "https://api.github.com/repos/$ORG/$REPO/pulls?state=open&per_page=100" \
+      | "$PYTHON" -c "import sys,json; [print(p['number'],p['head']['ref']) for p in json.load(sys.stdin) if p['head']['ref'].startswith('conductor/')]" 2>/dev/null || true)
+    if [ -n "$OPEN_PRS" ]; then
+      while IFS=' ' read -r pr_num branch_name; do
+        log "Closing PR #$pr_num ($branch_name)..."
+        curl -sf -X PATCH -H "Authorization: token $TOKEN" \
+          "https://api.github.com/repos/$ORG/$REPO/pulls/$pr_num" \
+          -d '{"state":"closed"}' > /dev/null
+      done <<< "$OPEN_PRS"
+    fi
+    # Delete conductor/* branches
+    BRANCHES=$(curl -sf -H "Authorization: token $TOKEN" \
+      "https://api.github.com/repos/$ORG/$REPO/branches?per_page=100" \
+      | "$PYTHON" -c "import sys,json; [print(b['name']) for b in json.load(sys.stdin) if b['name'].startswith('conductor/')]" 2>/dev/null || true)
+    if [ -n "$BRANCHES" ]; then
+      while IFS= read -r branch_name; do
+        log "Deleting branch $branch_name..."
+        curl -sf -X DELETE -H "Authorization: token $TOKEN" \
+          "https://api.github.com/repos/$ORG/$REPO/git/refs/heads/$branch_name" > /dev/null
+      done <<< "$BRANCHES"
+    fi
+    ok "Integration cleanup done for $ORG/$REPO"
+    ;;
+
+
   *)
     echo ""
     echo "Usage: ./dev.sh <command> [args]"
@@ -221,16 +270,21 @@ case "$CMD" in
     echo "    ./dev.sh demo ado-defect ado           — mock with ADO workflow"
     echo "    ./dev.sh demo-all [workflow]           — all 5 mock scenarios"
     echo ""
-    echo "  Run with real LLM (needs GITHUB_COPILOT_TOKEN):"
-    echo "    ./dev.sh sample [scenario] [workflow]  — real LLM demo"
-    echo "    ./dev.sh sample snyk adversarial       — real LLM + adversarial workflow"
-    echo "    ./dev.sh sample-all [workflow]         — all 5 real LLM scenarios"
+    echo "  Run with real LLM (needs GITHUB_TOKEN):"
+    echo "    ./dev.sh sample [scenario] [workflow]              — real LLM + fixture data, stub git"
+    echo "    ./dev.sh sample snyk adversarial                   — real LLM + adversarial workflow"
+    echo "    ./dev.sh sample snyk default integration           — real LLM + REAL branches/PRs in test repo"
+    echo "    ./dev.sh sample-all [workflow]                     — all 5 real LLM scenarios"
+    echo "    ./dev.sh sample-all default integration            — all 5 with real git operations"
     echo ""
     echo "  View results:"
     echo "    ./dev.sh runs                   — list mock runs"
     echo "    ./dev.sh runs sample            — list sample runs"
     echo "    ./dev.sh plan <RUN_ID>          — show fix plan"
     echo "    ./dev.sh trace <RUN_ID>         — show agent trace"
+    echo ""
+    echo "  Integration test cleanup:"
+    echo "    ./dev.sh clean-integration      — delete conductor/* branches + PRs in test repo"
     echo ""
     echo "  Other:"
     echo "    ./dev.sh test                   — run all unit tests"
@@ -240,6 +294,7 @@ case "$CMD" in
     echo ""
     echo "  Scenarios: snyk sonar blackduck ado-defect ado-story"
     echo "  Workflows: default | security | adversarial | ado | execute"
+    echo "  Modes:     mock | sample | integration | live"
     exit 1
     ;;
 esac

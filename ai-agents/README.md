@@ -39,7 +39,34 @@ You want to explore the framework, run the built-in demo scenarios, and see how 
 | Python | 3.11+ | [python.org](https://python.org) |
 | Git | any | — |
 
-> **Mock mode** (`CONDUCTOR_PROVIDER_MODE=mock`) requires **no LLM token** — all responses are stubs.
+### Provider Modes — Understanding the 4 Tiers
+
+Every `dev.sh` and `make` command accepts a `--mode` flag. The mode controls three independent layers:
+
+| Mode | LLM | Data (Snyk/Sonar/ADO) | Git Operations | Tokens needed |
+|---|---|---|---|---|
+| `mock` | StubLLM (instant, free) | Fixture JSON | Stubbed (fake PR URLs) | None |
+| `sample` | Real Copilot (`gpt-4.1`) | Fixture JSON | Stubbed (fake PR URLs) | `GITHUB_TOKEN` (Copilot) |
+| `integration` | Real Copilot (`gpt-4.1`) | Fixture JSON | **Real branches + PRs** on test repos | `GITHUB_TOKEN` |
+| `live` | Real Copilot (`gpt-4.1`) | Real scanner APIs | Real branches + PRs on prod repos | `GITHUB_TOKEN` + scanner tokens |
+
+**Key insight:** `sample` and `integration` both use the same fixture JSON as input — the LLM reasons about pre-baked data. The difference is what happens *after* the plan is approved: `sample` prints fake git URLs; `integration` actually creates a branch, commits the LLM-generated fix, and opens a real PR in your configured test repos.
+
+```bash
+# No tokens — runs instantly, great for CI and first exploration
+./dev.sh demo snyk                  # mock (default)
+
+# Real LLM reasoning, no git side effects
+./dev.sh sample snyk                # sample mode — needs GITHUB_TOKEN for Copilot
+
+# Real LLM + real GitHub branches/PRs in your test repos
+./dev.sh sample snyk default integration   # integration mode
+
+# Real LLM + real scanner data + real git (production)
+CONDUCTOR_PROVIDER_MODE=live ./dev.sh sample snyk
+```
+
+> **Mock mode** requires **no tokens** — all LLM responses are stubs, all git URLs are fake.
 
 ### 2. Setup
 
@@ -284,16 +311,25 @@ Key variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `CONDUCTOR_PROVIDER_MODE` | `mock` | `mock` or `live` |
+| `CONDUCTOR_PROVIDER_MODE` | `mock` | `mock` / `sample` / `integration` / `live` |
 | `CONDUCTOR_CODE_EXECUTION_ENABLED` | `false` | Enable execute mode |
-| `CONDUCTOR_LLM_MODEL` | `gpt-4o` | Default LLM model for all agents |
-| `CONDUCTOR_REVIEWER_MODEL` | `gpt-4o` | Model for adversarial ReviewerAgent |
+| `CONDUCTOR_LLM_MODEL` | `gpt-4.1` | Default LLM model for all agents |
+| `CONDUCTOR_REVIEWER_MODEL` | `gpt-4.1` | Model for adversarial ReviewerAgent |
 | `CONDUCTOR_LOG_LEVEL` | `INFO` | Log level |
 | `CONDUCTOR_CONFIDENCE_THRESHOLD` | `0.7` | Min confidence to proceed |
-| `COPILOT_GITHUB_TOKEN` | — | GitHub token for Copilot LLM |
+| `COPILOT_GITHUB_TOKEN` | — | GitHub token for Copilot LLM (sample/integration/live) |
 | `CONDUCTOR_DB_URL` | `sqlite+aiosqlite:///conductor_runs.db` | Result store database URL |
 | `CONDUCTOR_OTEL_ENDPOINT` | _(none)_ | OTLP gRPC endpoint for traces |
 | `CONDUCTOR_OTEL_SERVICE_NAME` | `conductor` | Service name in trace UIs |
+| `GITHUB_ORG` | — | GitHub org/user for real git ops (integration/live) |
+| `CONDUCTOR_BRANCH_PREFIX` | `conductor` | Branch prefix for real git ops |
+| `CONDUCTOR_GIT_EMAIL` | `conductor-bot@users.noreply.github.com` | Git commit author email |
+| `SNYK_TOKEN` | — | Snyk API token (live mode only) |
+| `SNYK_ORG_ID` | — | Snyk organisation ID (live mode only) |
+| `SONAR_URL` | — | SonarQube server URL (live mode only) |
+| `SONAR_TOKEN` | — | SonarQube user token (live mode only) |
+| `ADO_ORG` | — | Azure DevOps org URL e.g. `https://dev.azure.com/myorg` (live mode only) |
+| `ADO_PAT` | — | Azure DevOps Personal Access Token (live mode only) |
 
 ---
 

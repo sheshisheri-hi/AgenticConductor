@@ -180,9 +180,10 @@ async def run(
         workflow_yaml: Override the default workflow YAML for this scenario.
         log_file: Write structured JSON logs to this path (overrides settings.log_file).
         provider_mode: One of:
-            - ``mock``   — StubLLM, hardcoded responses, no token needed (default)
-            - ``sample`` — Real LLM (GitHub Copilot) + pre-built sample fixtures
-            - ``live``   — Real LLM + real scanner API data (requires scanner tokens)
+            - ``mock``        — StubLLM, hardcoded responses, no token needed (default)
+            - ``sample``      — Real LLM (GitHub Copilot) + pre-built sample fixtures + stub git
+            - ``integration`` — Real LLM + sample fixtures + REAL git ops on test repos (needs GITHUB_TOKEN + GITHUB_ORG)
+            - ``live``        — Real LLM + real scanner APIs + real git ops on prod repos
 
     Returns:
         Completed WorkflowContext.
@@ -190,7 +191,7 @@ async def run(
     settings = SentinelSettings()
     configure_logging(log_level=settings.log_level, log_file=log_file or settings.log_file)
 
-    if provider_mode == "sample" or provider_mode == "live":
+    if provider_mode in ("sample", "integration", "live"):
         from conductor_integrations.llm.copilot import CopilotLLM
         llm = CopilotLLM()
     else:
@@ -441,12 +442,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["mock", "sample", "live"],
+        choices=["mock", "sample", "integration", "live"],
         default=os.environ.get("CONDUCTOR_PROVIDER_MODE", "mock"),
         help=(
-            "LLM provider mode: mock=StubLLM (default), "
-            "sample=real LLM + sample fixtures (needs GITHUB_TOKEN), "
-            "live=real LLM + real scanner APIs"
+            "Provider mode: mock=StubLLM+fixtures+stub-git (default), "
+            "sample=real LLM+fixtures+stub-git (needs GITHUB_TOKEN), "
+            "integration=real LLM+fixtures+REAL git on test repos (needs GITHUB_TOKEN+GITHUB_ORG), "
+            "live=real LLM+real scanner APIs+real git"
         ),
     )
     args = parser.parse_args()
