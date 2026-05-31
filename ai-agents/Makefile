@@ -36,7 +36,20 @@ setup:
 	@echo "✅ Setup complete. Run: make demo"
 
 test:
-	@bash scripts/run_tests.sh
+	@echo "═══════════════════════════════════════════════"
+	@echo "  Conductor Test Suite"
+	@echo "═══════════════════════════════════════════════"
+	@echo ""
+	@echo "▶ conductor-core unit"
+	@(cd conductor-core && ../$(PYTEST) tests/unit -q --tb=short)
+	@echo ""
+	@echo "▶ conductor-integrations unit"
+	@(cd conductor-integrations && ../$(PYTEST) tests/unit -q --tb=short)
+	@echo ""
+	@echo "▶ consumer-showcase unit"
+	@(cd consumer-showcase && ../$(PYTEST) tests/unit -q --tb=short)
+	@echo ""
+	@echo "✅ All unit tests passed"
 
 test-unit:
 	@echo "=== conductor-core ===" && (cd conductor-core && ../$(PYTEST) tests/unit -q --tb=short)
@@ -52,25 +65,25 @@ demo:
 		echo "═══════════════════════════════════════"; \
 		echo "  Running scenario: $$scenario"; \
 		echo "═══════════════════════════════════════"; \
-		bash scripts/run_demo.sh $$scenario || exit 1; \
+		source $(VENV)/bin/activate && CONDUCTOR_PROVIDER_MODE=mock $(PYTHON) consumer-showcase/main.py --scenario $$scenario || exit 1; \
 	done
 	@echo ""
 	@echo "✅ All 5 scenarios completed"
 
 demo-snyk:
-	@bash scripts/run_demo.sh snyk
+	@source $(VENV)/bin/activate && CONDUCTOR_PROVIDER_MODE=mock $(PYTHON) consumer-showcase/main.py --scenario snyk
 
 demo-sonar:
-	@bash scripts/run_demo.sh sonar
+	@source $(VENV)/bin/activate && CONDUCTOR_PROVIDER_MODE=mock $(PYTHON) consumer-showcase/main.py --scenario sonar
 
 demo-blackduck:
-	@bash scripts/run_demo.sh blackduck
+	@source $(VENV)/bin/activate && CONDUCTOR_PROVIDER_MODE=mock $(PYTHON) consumer-showcase/main.py --scenario blackduck
 
 demo-ado-defect:
-	@bash scripts/run_demo.sh ado-defect
+	@source $(VENV)/bin/activate && CONDUCTOR_PROVIDER_MODE=mock $(PYTHON) consumer-showcase/main.py --scenario ado-defect
 
 demo-ado-story:
-	@bash scripts/run_demo.sh ado-story
+	@source $(VENV)/bin/activate && CONDUCTOR_PROVIDER_MODE=mock $(PYTHON) consumer-showcase/main.py --scenario ado-story
 
 lint:
 	$(VENV)/bin/ruff check conductor-core conductor-integrations consumer-showcase

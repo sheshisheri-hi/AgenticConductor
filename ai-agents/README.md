@@ -2,6 +2,8 @@
 
 A reusable orchestration framework for building multi-agent AI workflows. Write agents + YAML, get confidence gating, filter/router engine, telemetry, plan/execute modes, and audit trail for free.
 
+Inspired by MetaGPT, CrewAI, and production security remediation workflows.
+
 ---
 
 ## Structure
@@ -11,40 +13,196 @@ ai-agents/
 ├── conductor-core/          # Layer 1: pure framework (BaseAgent, Orchestrator, Graph, Store)
 ├── conductor-agents/        # Layer 2: 10 domain agents with prompts + SKILL.md
 ├── conductor-integrations/  # Layer 2: pre-built source/git/notify clients
-├── conductor-cli/           # Layer 3: planned CLI (not yet implemented)
+├── conductor-cli/           # Layer 3: conductor CLI (runs, plan, trace, clean, logs)
 ├── consumer-showcase/       # Layer 3: reference consumer (security remediation)
 ├── docs/                    # Documentation
 │   ├── architecture.md      # full architecture + persistence schema
 │   ├── workflow-yaml.md     # YAML config reference
 │   ├── consumer-guide.md    # step-by-step new consumer guide
-│   └── scripts.md           # all scripts with options
+│   ├── scripts.md           # conductor CLI commands reference
+│   └── installation.md      # local / GitHub / Artifactory install options
 ├── samples/                 # Real code files with baked-in issues
 ├── mocks/                   # Pre-baked JSON fixtures (no scanner tokens needed)
-├── Makefile                 # make setup | test | demo
-└── scripts/                 # CI/CD shell scripts
+└── Makefile                 # make setup | test | demo
 ```
 
 ---
 
-## Quick Start
+## 👩‍💻 Path 1: Developer — Run the Samples
+
+You want to explore the framework, run the built-in demo scenarios, and see how it works end-to-end.
+
+### 1. Prerequisites
+
+| Tool | Min version | Install |
+|---|---|---|
+| Python | 3.11+ | [python.org](https://python.org) |
+| Git | any | — |
+
+> **Mock mode** (`CONDUCTOR_PROVIDER_MODE=mock`) requires **no LLM token** — all responses are stubs.
+
+### 2. Setup
 
 ```bash
-# 1. Clone and set up (creates .venv, installs all packages)
-cd NewFramework/ai-agents
-make setup
+git clone https://github.com/sheshisheri-hi/AgenticConductor.git
+cd AgenticConductor/ai-agents
 
-# 2. Copy env template and fill in values (mock mode works with no credentials)
-cp .env.example .env
+make setup          # creates .venv, installs all 5 packages + conductor CLI
+```
 
-# 3. Run all unit tests
-make test
+### 3. Verify
 
-# 4. Run a demo scenario (no LLM token required in mock mode)
-make demo              # snyk CVE scenario
-make demo-sonar        # SQL injection + hardcoded credential
-make demo-blackduck    # GPL license violation
-make demo-ado-defect   # off-by-one bug
-make demo-ado-story    # feature implementation story
+```bash
+make test           # runs all unit tests — should all pass, no token needed
+```
+
+### 4. Run demo scenarios
+
+```bash
+make demo              # all 5 scenarios back-to-back
+make demo-snyk         # Snyk CVE: requests 2.18.0 vulnerability
+make demo-sonar        # SonarQube: SQL injection + hardcoded credential
+make demo-blackduck    # BlackDuck: GPL-3.0 license violation
+make demo-ado-defect   # ADO defect: off-by-one + division by zero
+make demo-ado-story    # ADO story: unimplemented paginate()
+```
+
+### 5. Inspect results with the CLI
+
+```bash
+source .venv/bin/activate
+
+# List all runs
+conductor runs --store /tmp/runs.db
+
+# See the fix plan
+conductor plan SNYK-001-demo --store /tmp/runs.db
+
+# Full reasoning trace (which agent decided what, confidence, cost)
+conductor trace SNYK-001-demo --store /tmp/runs.db
+
+# Audit trail (with LLM prompts + raw responses)
+conductor trace SNYK-001-demo --store /tmp/runs.db --prompts --raw
+
+# Everything in one view
+conductor all --store /tmp/runs.db
+```
+
+### 6. Try different workflow configs
+
+```bash
+# Plan-only (stops before code generation)
+python consumer-showcase/main.py --scenario snyk --workflow consumer-showcase/config/workflow_security.yaml --store /tmp/runs.db
+
+# Adversarial: reviewer uses a different model than planner
+python consumer-showcase/main.py --scenario snyk --workflow consumer-showcase/config/workflow_adversarial.yaml --store /tmp/runs.db
+
+# Full execute mode (plan → code → git → PR → notify)
+python consumer-showcase/main.py --scenario snyk --workflow consumer-showcase/config/workflow_execute.yaml --store /tmp/runs.db
+```
+
+---
+
+## 🏗️ Path 2: New Consumer — Build From This
+
+You want to build your own pipeline on top of Conductor (e.g., a different domain than security remediation).
+
+### Option A — Reuse existing agents (fastest)
+
+Pick from the 10 agents in `conductor-agents` and wire them in a YAML:
+
+```python
+# my_consumer/main.py
+import asyncio
+from conductor_core.orchestrator import WorkflowOrchestrator
+from conductor_core.graph import WorkflowGraph
+from conductor_core.context import WorkflowContext
+from conductor_core.stores.sqlite_store import SQLiteResultStore
+from conductor_agents import TriageAgent, PlannerAgent, ReviewerAgent
+from conductor_integrations.sources.factory import SourceFactory
+
+async def main():
+    llm        = ...                   # your LLM client
+    graph      = WorkflowGraph.from_yaml("config/workflow.yaml")
+    store      = SQLiteResultStore("runs.db")
+    orch       = WorkflowOrchestrator(
+        agents={"triage": TriageAgent(llm), "planner": PlannerAgent(llm), "reviewer": ReviewerAgent(llm)},
+        graph=graph,
+        result_store=store,
+    )
+    payload    = {"work_item": {"id": "MY-001", "title": "...", "severity": "HIGH"}}
+    ctx        = WorkflowContext(run_id="MY-001", payload=payload)
+    result     = await orch.run(ctx)
+    print(result.decisions[-1].recommendation)
+
+asyncio.run(main())
+```
+
+### Option B — Write a custom agent
+
+```python
+# my_consumer/agents/my_agent.py
+from conductor_core.base_agent import BaseAgent
+from conductor_core.decisions import AgentDecision
+
+class MyAgent(BaseAgent):
+    NAME = "my_agent"
+
+    async def decide(self, context) -> AgentDecision:
+        response = await self._reason(
+            system="You are a specialist in ...",
+            user=f"Evaluate: {context.payload}",
+            context=context,
+        )
+        return AgentDecision(
+            agent=self.NAME,
+            recommendation=response.get("recommendation", "PROCEED"),
+            confidence=response.get("confidence", 0.8),
+            reasoning=response.get("reasoning", []),
+        )
+```
+
+Customize the prompt by editing `agents/my_agent/prompts/system.md` — no code change needed.
+
+### Install from GitHub
+
+```bash
+pip install "git+https://github.com/sheshisheri-hi/AgenticConductor.git#subdirectory=ai-agents/conductor-core"
+pip install "git+https://github.com/sheshisheri-hi/AgenticConductor.git#subdirectory=ai-agents/conductor-agents"
+```
+
+### Full consumer guide
+
+→ **[docs/consumer-guide.md](docs/consumer-guide.md)** — 9-step walkthrough: setup, agents, YAML, testing, persistence, OTEL
+
+---
+
+## How It Works
+
+```
+WorkflowContext (payload: dict)
+       │
+       ▼
+FilterEngine  ─── reject_if_in, reject_if_null, dedup (zero LLM cost)
+       │
+       ▼
+RouterEngine  ─── payload field matching → workflow graph selection
+       │
+       ▼
+WorkflowOrchestrator
+  ┌────────────────┐
+  │  stage loop    │
+  │  ┌──────────┐  │
+  │  │ agent    │◄─┤── BaseAgent (LLM) / FunctionalAgent (no LLM)
+  │  │ decision │  │
+  │  └──────────┘  │
+  │  transitions   │── YAML: on_proceed → next_stage
+  └────────────────┘
+       │
+       ▼
+WorkflowContext.decisions  (append-only audit trail)
+WorkflowContext.telemetry  (tokens / latency / recode_rounds)
+SQLiteResultStore          (persist runs + decisions → query with conductor CLI)
 ```
 
 ---
