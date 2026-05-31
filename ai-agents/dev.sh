@@ -77,10 +77,9 @@ case "$CMD" in
     log "Running mock demo — scenario: $SCENARIO"
     "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode mock --store /tmp/runs.db
     echo ""
-    ok "Done."
-    echo "  View results (activate venv first or use full path):"
-    echo "    source .venv/bin/activate && conductor runs --store /tmp/runs.db"
-    echo "    source .venv/bin/activate && conductor plan SNYK-001-demo --store /tmp/runs.db"
+    ok "Done. View results:"
+    echo "    ./dev.sh runs"
+    echo "    ./dev.sh plan SNYK-001-demo"
     ;;
 
   demo-all)
@@ -88,7 +87,7 @@ case "$CMD" in
     log "Running all 5 mock scenarios..."
     "$PYTHON" consumer-showcase/main.py --all --mode mock --store /tmp/runs.db
     echo ""
-    ok "Done. View results: conductor runs --store /tmp/runs.db"
+    ok "Done. View results: ./dev.sh runs"
     ;;
 
   sample)
@@ -98,10 +97,9 @@ case "$CMD" in
     log "Running sample demo (real LLM) — scenario: $SCENARIO"
     "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode sample --store /tmp/runs_sample.db
     echo ""
-    ok "Done."
-    echo "  View results:"
-    echo "    source .venv/bin/activate && conductor runs --store /tmp/runs_sample.db"
-    echo "    source .venv/bin/activate && conductor plan --store /tmp/runs_sample.db"
+    ok "Done. View results:"
+    echo "    ./dev.sh runs sample"
+    echo "    ./dev.sh plan <RUN_ID> sample"
     ;;
 
   sample-all)
@@ -111,7 +109,7 @@ case "$CMD" in
     log "Running all 5 sample scenarios (real LLM)..."
     "$PYTHON" consumer-showcase/main.py --all --mode sample --store /tmp/runs_sample.db
     echo ""
-    ok "Done. View results: conductor runs --store /tmp/runs_sample.db"
+    ok "Done. View results: ./dev.sh runs sample"
     ;;
 
   test)
@@ -123,9 +121,69 @@ case "$CMD" in
     ok "All tests passed."
     ;;
 
+  runs)
+    # ./dev.sh runs          → list mock runs
+    # ./dev.sh runs sample   → list sample runs
+    ensure_venv
+    STORE="${2:-/tmp/runs.db}"
+    [[ "${2:-}" == "sample" ]] && STORE="/tmp/runs_sample.db"
+    "$VENV/bin/conductor" runs --store "$STORE"
+    ;;
+
+  plan)
+    # ./dev.sh plan <RUN_ID>          → show plan from mock db
+    # ./dev.sh plan <RUN_ID> sample   → show plan from sample db
+    ensure_venv
+    RUN_ID="${2:-}"
+    STORE="/tmp/runs.db"
+    [[ "${3:-}" == "sample" ]] && STORE="/tmp/runs_sample.db"
+    if [ -z "$RUN_ID" ]; then
+      echo "Usage: ./dev.sh plan <RUN_ID> [sample]"
+      exit 1
+    fi
+    "$VENV/bin/conductor" plan "$RUN_ID" --store "$STORE"
+    ;;
+
+  trace)
+    # ./dev.sh trace <RUN_ID>         → show trace from mock db
+    # ./dev.sh trace <RUN_ID> sample  → show trace from sample db
+    ensure_venv
+    RUN_ID="${2:-}"
+    STORE="/tmp/runs.db"
+    [[ "${3:-}" == "sample" ]] && STORE="/tmp/runs_sample.db"
+    if [ -z "$RUN_ID" ]; then
+      echo "Usage: ./dev.sh trace <RUN_ID> [sample]"
+      exit 1
+    fi
+    "$VENV/bin/conductor" trace "$RUN_ID" --store "$STORE"
+    ;;
+
   *)
-    echo "Usage: ./dev.sh [setup|check|demo|demo-all|sample|sample-all|test] [scenario]"
-    echo "Scenarios: snyk sonar blackduck ado-defect ado-story"
+    echo ""
+    echo "Usage: ./dev.sh <command> [args]"
+    echo ""
+    echo "  Setup & verification:"
+    echo "    ./dev.sh setup                  — create venv + install all packages"
+    echo "    ./dev.sh check                  — verify Copilot token + access"
+    echo ""
+    echo "  Run demos (no token needed):"
+    echo "    ./dev.sh demo [scenario]        — mock demo (default: snyk)"
+    echo "    ./dev.sh demo-all               — all 5 mock scenarios"
+    echo ""
+    echo "  Run with real LLM (needs GITHUB_COPILOT_TOKEN):"
+    echo "    ./dev.sh sample [scenario]      — real LLM demo"
+    echo "    ./dev.sh sample-all             — all 5 real LLM scenarios"
+    echo ""
+    echo "  View results:"
+    echo "    ./dev.sh runs                   — list mock runs"
+    echo "    ./dev.sh runs sample            — list sample runs"
+    echo "    ./dev.sh plan <RUN_ID>          — show fix plan"
+    echo "    ./dev.sh trace <RUN_ID>         — show agent trace"
+    echo ""
+    echo "  Other:"
+    echo "    ./dev.sh test                   — run all unit tests"
+    echo ""
+    echo "  Scenarios: snyk sonar blackduck ado-defect ado-story"
     exit 1
     ;;
 esac
