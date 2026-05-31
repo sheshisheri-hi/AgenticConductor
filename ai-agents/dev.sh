@@ -2,14 +2,15 @@
 # dev.sh — One-shot developer setup + run script
 #
 # Usage:
-#   ./dev.sh                        # setup venv + run mock demo (snyk)
-#   ./dev.sh setup                  # setup only (venv + install all packages)
-#   ./dev.sh demo [scenario]        # run mock demo (no token needed)
-#   ./dev.sh sample [scenario]      # run sample demo (needs GITHUB_COPILOT_TOKEN)
-#   ./dev.sh check                  # verify token + Copilot access
-#   ./dev.sh test                   # run all unit tests
+#   ./dev.sh                               # setup venv + run mock demo (snyk)
+#   ./dev.sh setup                         # setup only (venv + install all packages)
+#   ./dev.sh demo [scenario] [workflow]    # run mock demo (no token needed)
+#   ./dev.sh sample [scenario] [workflow]  # run sample demo (needs GITHUB_COPILOT_TOKEN)
+#   ./dev.sh check                         # verify token + Copilot access
+#   ./dev.sh test                          # run all unit tests
 #
 # Scenarios: snyk sonar blackduck ado-defect ado-story (default: snyk)
+# Workflows: default | security | adversarial | ado | execute (default: default)
 
 set -euo pipefail
 
@@ -60,6 +61,26 @@ ensure_venv() {
 # ── commands ───────────────────────────────────────────────────────────────
 CMD="${1:-demo}"
 SCENARIO="${2:-snyk}"
+WORKFLOW_ARG="${3:-default}"
+
+# Resolve workflow YAML path from short name
+# Usage: WORKFLOW_FILE=$(resolve_workflow "adversarial")
+resolve_workflow() {
+  local name="${1:-default}"
+  case "$name" in
+    default)   echo "consumer-showcase/config/workflow.yaml" ;;
+    security)  echo "consumer-showcase/config/workflow_security.yaml" ;;
+    adversarial) echo "consumer-showcase/config/workflow_adversarial.yaml" ;;
+    ado)       echo "consumer-showcase/config/workflow_ado.yaml" ;;
+    execute)   echo "consumer-showcase/config/workflow_execute.yaml" ;;
+    *)
+      # Allow passing a direct path too
+      if [ -f "$name" ]; then echo "$name"
+      else err "Unknown workflow: $name. Valid: default, security, adversarial, ado, execute"
+      fi
+      ;;
+  esac
+}
 
 case "$CMD" in
   setup)
@@ -74,8 +95,9 @@ case "$CMD" in
 
   demo)
     ensure_venv
-    log "Running mock demo — scenario: $SCENARIO"
-    "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode mock --store /tmp/runs.db
+    WFILE=$(resolve_workflow "$WORKFLOW_ARG")
+    log "Running mock demo — scenario: $SCENARIO  workflow: $WORKFLOW_ARG"
+    "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode mock --workflow "$WFILE" --store /tmp/runs.db
     echo ""
     ok "Done. View results:"
     echo "    ./dev.sh runs"
@@ -84,18 +106,20 @@ case "$CMD" in
 
   demo-all)
     ensure_venv
-    log "Running all 5 mock scenarios..."
-    "$PYTHON" consumer-showcase/main.py --all --mode mock --store /tmp/runs.db
+    WFILE=$(resolve_workflow "$WORKFLOW_ARG")
+    log "Running all 5 mock scenarios (workflow: $WORKFLOW_ARG)..."
+    "$PYTHON" consumer-showcase/main.py --all --mode mock --workflow "$WFILE" --store /tmp/runs.db
     echo ""
     ok "Done. View results: ./dev.sh runs"
     ;;
 
   sample)
     ensure_venv
+    WFILE=$(resolve_workflow "$WORKFLOW_ARG")
     log "Checking token before running sample mode..."
     "$VENV/bin/conductor" check
-    log "Running sample demo (real LLM) — scenario: $SCENARIO"
-    "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode sample --store /tmp/runs_sample.db
+    log "Running sample demo (real LLM) — scenario: $SCENARIO  workflow: $WORKFLOW_ARG"
+    "$PYTHON" consumer-showcase/main.py --scenario "$SCENARIO" --mode sample --workflow "$WFILE" --store /tmp/runs_sample.db
     echo ""
     ok "Done. View results:"
     echo "    ./dev.sh runs sample"
@@ -104,10 +128,11 @@ case "$CMD" in
 
   sample-all)
     ensure_venv
+    WFILE=$(resolve_workflow "$WORKFLOW_ARG")
     log "Checking token before running sample mode..."
     "$VENV/bin/conductor" check
-    log "Running all 5 sample scenarios (real LLM)..."
-    "$PYTHON" consumer-showcase/main.py --all --mode sample --store /tmp/runs_sample.db
+    log "Running all 5 sample scenarios (real LLM, workflow: $WORKFLOW_ARG)..."
+    "$PYTHON" consumer-showcase/main.py --all --mode sample --workflow "$WFILE" --store /tmp/runs_sample.db
     echo ""
     ok "Done. View results: ./dev.sh runs sample"
     ;;
@@ -115,9 +140,9 @@ case "$CMD" in
   test)
     ensure_venv
     log "Running unit tests..."
-    (cd conductor-core && ../"$VENV/bin/pytest" tests/unit -q --tb=short)
-    (cd conductor-integrations && ../"$VENV/bin/pytest" tests/unit -q --tb=short)
-    (cd consumer-showcase && ../"$VENV/bin/pytest" tests/unit -q --tb=short)
+    (cd conductor-core && "$VENV/bin/pytest" tests/unit -q --tb=short)
+    (cd conductor-integrations && "$VENV/bin/pytest" tests/unit -q --tb=short)
+    (cd consumer-showcase && "$VENV/bin/pytest" tests/unit -q --tb=short)
     ok "All tests passed."
     ;;
 
@@ -190,12 +215,16 @@ case "$CMD" in
     echo "    ./dev.sh check                  — verify Copilot token + access"
     echo ""
     echo "  Run demos (no token needed):"
-    echo "    ./dev.sh demo [scenario]        — mock demo (default: snyk)"
-    echo "    ./dev.sh demo-all               — all 5 mock scenarios"
+    echo "    ./dev.sh demo [scenario] [workflow]    — mock demo (default: snyk, default workflow)"
+    echo "    ./dev.sh demo snyk adversarial         — mock with adversarial workflow (parallel gate)"
+    echo "    ./dev.sh demo snyk security            — mock with security workflow"
+    echo "    ./dev.sh demo ado-defect ado           — mock with ADO workflow"
+    echo "    ./dev.sh demo-all [workflow]           — all 5 mock scenarios"
     echo ""
     echo "  Run with real LLM (needs GITHUB_COPILOT_TOKEN):"
-    echo "    ./dev.sh sample [scenario]      — real LLM demo"
-    echo "    ./dev.sh sample-all             — all 5 real LLM scenarios"
+    echo "    ./dev.sh sample [scenario] [workflow]  — real LLM demo"
+    echo "    ./dev.sh sample snyk adversarial       — real LLM + adversarial workflow"
+    echo "    ./dev.sh sample-all [workflow]         — all 5 real LLM scenarios"
     echo ""
     echo "  View results:"
     echo "    ./dev.sh runs                   — list mock runs"
@@ -210,6 +239,7 @@ case "$CMD" in
     echo "    ./dev.sh clean all              — remove everything (venv + artifacts + DBs)"
     echo ""
     echo "  Scenarios: snyk sonar blackduck ado-defect ado-story"
+    echo "  Workflows: default | security | adversarial | ado | execute"
     exit 1
     ;;
 esac
