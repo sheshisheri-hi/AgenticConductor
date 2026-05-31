@@ -110,12 +110,7 @@ consumer-showcase/
 │   ├── workflow_execute.yaml       # full 11-stage pipeline
 │   └── workflow_adversarial.yaml   # adversarial gate with per-stage model
 ├── scripts/
-│   ├── show_runs.py                # list all runs with tokens/cost
-│   ├── show_plan.py                # show fix plan for a run
-│   ├── show_trace.py               # full reasoning trace (with prompts/responses)
-│   ├── show_all.py                 # everything (runs + traces + plans)
-│   ├── show_logs.py                # filter structured JSON log file
-│   └── clean_run.py                # delete runs from DB
+│   └── __init__.py                 # (scripts moved to conductor-cli)
 ├── consumer_showcase/
 │   └── agents/                     # re-exports from conductor-agents
 │       ├── __init__.py
@@ -172,33 +167,34 @@ All 10 agents live in `conductor-agents` (Layer 2). This consumer just imports a
 
 ## Operational Scripts
 
+Scripts have moved to **`conductor-cli`** — use the `conductor` command instead:
+
 ```bash
 # List all runs (with workflow, source, tokens, cost)
-python scripts/show_runs.py --store /tmp/runs.db
+conductor runs --store /tmp/runs.db
 
 # Show fix plan
-python scripts/show_plan.py --store /tmp/runs.db --run SNYK-001-demo
+conductor plan SNYK-001-demo --store /tmp/runs.db
 
 # Full reasoning trace (agent decisions, model used, confidence)
-python scripts/show_trace.py --store /tmp/runs.db --run SNYK-001-demo
+conductor trace SNYK-001-demo --store /tmp/runs.db
 
 # Trace with prompts + raw LLM responses (full audit)
-python scripts/show_trace.py --store /tmp/runs.db --run SNYK-001-demo --prompts --raw
+conductor trace SNYK-001-demo --store /tmp/runs.db --prompts --raw
 
 # Everything (all runs + traces + plans)
-python scripts/show_all.py --store /tmp/runs.db
+conductor all --store /tmp/runs.db
 
 # View structured logs
-python main.py --scenario snyk --store /tmp/runs.db --log-file /tmp/conductor.log
-python scripts/show_logs.py --log /tmp/conductor.log --events
-python scripts/show_logs.py --log /tmp/conductor.log --run SNYK-001-demo
+conductor logs --events
+conductor logs --run SNYK-001-demo
 
 # Delete a run
-python scripts/clean_run.py --store /tmp/runs.db --run SNYK-001-demo
-python scripts/clean_run.py --list --store /tmp/runs.db
+conductor clean SNYK-001-demo --store /tmp/runs.db
+conductor clean --list --store /tmp/runs.db
 ```
 
-See [docs/scripts.md](../docs/scripts.md) for full options reference.
+See [conductor-cli/README.md](../conductor-cli/README.md) for full options reference.
 
 ---
 
