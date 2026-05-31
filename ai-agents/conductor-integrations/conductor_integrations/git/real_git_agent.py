@@ -11,8 +11,11 @@ Flow:
     4. git commit + push
     5. Open a draft PR via GitHub REST API
 
-Required env vars:
-    GITHUB_TOKEN            — PAT or GitHub App token with repo write access
+Required env vars (first non-empty wins):
+    CONDUCTOR_GITHUB_TOKEN  — preferred (most specific)
+    GITHUB_COPILOT_TOKEN    — alias
+    COPILOT_GITHUB_TOKEN    — alias
+    GITHUB_TOKEN            — fallback (PAT or GitHub App token with repo write access)
 
 Optional env vars:
     GITHUB_ORG              — Default GitHub org/user (used when repo has no org prefix)
@@ -52,7 +55,15 @@ class RealGitAgent(FunctionalAgent):
     AGENT_NAME = "git"
 
     def __init__(self, token: str | None = None):
-        self._token = token or os.getenv("GITHUB_TOKEN", "")
+        # Same resolution order as CopilotLLM — most-specific → least-specific
+        self._token = (
+            token
+            or os.getenv("CONDUCTOR_GITHUB_TOKEN")
+            or os.getenv("GITHUB_COPILOT_TOKEN")
+            or os.getenv("COPILOT_GITHUB_TOKEN")
+            or os.getenv("GITHUB_TOKEN")
+            or ""
+        )
 
     # ------------------------------------------------------------------ #
     # FunctionalAgent interface
@@ -82,7 +93,7 @@ class RealGitAgent(FunctionalAgent):
             return decision
 
         if not self._token:
-            reasoning = "Git operations skipped — GITHUB_TOKEN not set."
+            reasoning = "Git operations skipped — no GitHub token set (CONDUCTOR_GITHUB_TOKEN / GITHUB_TOKEN)."
             logger.error("real_git.no_token")
             decision = AgentDecision(
                 agent=self.AGENT_NAME,

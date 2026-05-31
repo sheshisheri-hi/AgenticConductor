@@ -28,6 +28,17 @@ ai-agents/
 
 ---
 
+## 🛠 Which tool to use?
+
+| Tool | When to use |
+|---|---|
+| `./dev.sh <cmd>` | **Day-to-day development.** Manages the virtualenv for you — no `source .venv/bin/activate` needed. Preferred for running tests, demos, and sample mode. |
+| `make <target>` | **Shorthand aliases** for common dev.sh commands. `make demo` = `./dev.sh demo`. Same underlying logic; use whichever you prefer. |
+| `conductor <cmd>` | **Inspecting persisted results.** After a run, use the CLI to view runs, fix plans, reasoning traces, and audit logs: `conductor runs`, `conductor plan`, `conductor trace`. |
+| `python consumer-showcase/main.py` | **Advanced/scripted usage.** Pass custom flags (`--scenario`, `--workflow`, `--store`, `--mode`). Useful when you need full control not exposed via `dev.sh`. |
+
+---
+
 ## 👩‍💻 Path 1: Developer — Run the Samples
 
 You want to explore the framework, run the built-in demo scenarios, and see how it works end-to-end.
@@ -38,10 +49,30 @@ You want to explore the framework, run the built-in demo scenarios, and see how 
 |---|---|---|
 | Python | 3.11+ | [python.org](https://python.org) |
 | Git | any | — |
+| `gh` CLI | 2.x | `brew install gh` (macOS) / [cli.github.com](https://cli.github.com) |
+| GitHub Copilot extension | latest | `gh extension install github/gh-copilot` |
+
+> **Mock mode** (`CONDUCTOR_PROVIDER_MODE=mock`) requires **no tokens** — all LLM calls are instant stubs. The `gh` CLI + Copilot extension are only needed for `sample` / `integration` / `live` modes.
+
+### 2. Required environment variables
+
+Copy `.env.example` to `.env` and fill in the values you need:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required for | Description |
+|---|---|---|
+| `CONDUCTOR_GITHUB_TOKEN` | `sample`, `integration`, `live` | GitHub PAT — used for **both** Copilot LLM calls and git operations. Resolves via: `CONDUCTOR_GITHUB_TOKEN` → `GITHUB_COPILOT_TOKEN` → `COPILOT_GITHUB_TOKEN` → `GITHUB_TOKEN` (first non-empty wins). |
+| `GITHUB_ORG` | `integration` | GitHub org/user where test branches + PRs are created (e.g. `sheshisheri-hi`). |
+| `CONDUCTOR_PROVIDER_MODE` | always | `mock` (default, no token) / `sample` / `integration` / `live` |
+| `CONDUCTOR_DB_URL` | optional | SQLite path (default: `sqlite+aiosqlite:///conductor_runs.db`). Switch to `postgresql+asyncpg://...` for production. |
+| `SNYK_TOKEN`, `SONAR_TOKEN`, etc. | `live` only | Real scanner API tokens. See `.env.example` for full list. |
 
 ### Provider Modes — Understanding the 4 Tiers
 
-Every `dev.sh` and `make` command accepts a `--mode` flag. The mode controls three independent layers:
+`dev.sh` and `make` use `CONDUCTOR_PROVIDER_MODE` (or the optional 4th CLI argument) to control three independent runtime layers — LLM, data source, and git operations:
 
 | Mode | LLM | Data (Snyk/Sonar/ADO) | Git Operations | Tokens needed |
 |---|---|---|---|---|
@@ -234,51 +265,28 @@ SQLiteResultStore          (persist runs + decisions → query with conductor CL
 
 ---
 
-## Prerequisites
+## Tech Stack
 
-| Tool | Minimum version | Install |
+| Layer | Technology | Notes |
 |---|---|---|
-| Python | 3.11 | [python.org](https://python.org) |
-| `gh` CLI | 2.x | `brew install gh` |
-| Copilot extension | latest | `gh extension install github/gh-copilot` |
-
-> For mock mode (`CONDUCTOR_PROVIDER_MODE=mock`) no scanner tokens are needed.
-> Real LLM calls require `CONDUCTOR_LLM_PROVIDER` + `COPILOT_GITHUB_TOKEN` (or `GITHUB_TOKEN`).
-
----
-
-## How It Works
-
-```
-WorkflowContext (payload: dict)
-       │
-       ▼
-FilterEngine  ─── reject_if_in, reject_if_null, dedup (zero LLM cost)
-       │
-       ▼
-RouterEngine  ─── payload field matching → workflow graph selection
-       │
-       ▼
-WorkflowOrchestrator
-  ┌────────────────┐
-  │  stage loop    │
-  │  ┌──────────┐  │
-  │  │ agent    │◄─┤── BaseAgent (LLM) / FunctionalAgent (no LLM)
-  │  │ decision │  │
-  │  └──────────┘  │
-  │  transitions   │── YAML: on_proceed → next_stage
-  └────────────────┘
-       │
-       ▼
-WorkflowContext.decisions  (append-only audit trail)
-WorkflowContext.telemetry  (tokens / latency / recode_rounds)
-```
+| **Orchestration** | Custom pipeline (no LangGraph) | YAML-driven graph, sequential + parallel runners. See [ADR-008](docs/adr/ADR-008-custom-orchestration-vs-langgraph.md) for why LangGraph was considered and not adopted. |
+| **LLM** | GitHub Copilot SDK (`gpt-4.1`) | Pluggable via `ILLMProvider` — swap to OpenAI, Azure, Anthropic without changing agents. |
+| **Result store (dev)** | SQLite (`aiosqlite`) | Zero setup. Stores 2 tables: `runs` (summary per run) and `agent_decisions` (full prompt/response/reasoning per agent call). Configure path via `CONDUCTOR_DB_URL`. |
+| **Result store (prod)** | PostgreSQL | `docker compose up -d postgres`, set `CONDUCTOR_DB_URL=postgresql+asyncpg://...`. Same `IResultStore` interface — no code change. |
+| **Tracing** | OpenTelemetry | Per-stage spans with agent/token/confidence attributes. Silent no-op locally; plug in Jaeger/Honeycomb/Datadog via `CONDUCTOR_OTEL_ENDPOINT`. |
+| **Logging** | structlog (JSON) | Stdout by default. Set `CONDUCTOR_LOG_FILE=logs/conductor.log` to also write to file. |
+| **Packaging** | `pyproject.toml` (PEP 621) + `pip install -e` | Modern Python packaging standard (replaces `setup.py`). Used by FastAPI, Pydantic, and most major Python projects. |
+| **Task runner** | `Makefile` + `dev.sh` | Makefile is a thin alias layer over `dev.sh`. Both are standard tooling — Make is used by Linux kernel, NumPy, and most open-source projects. |
 
 ---
 
 ## Writing Your Own Consumer
 
-The fastest path is to **reuse existing agents** from `conductor-agents` and just write a workflow YAML:
+The fastest path is to **reuse existing agents** from `conductor-agents` and just write a workflow YAML.
+
+> **`ctx` = `WorkflowContext`** — the runtime object that flows through the entire pipeline. It holds the input `payload` (work item from your ingest/triage pipeline), accumulates `decisions` from each agent, and tracks `telemetry` (tokens, latency). You create it, the orchestrator runs it.
+
+> **`SQLiteResultStore`** is one implementation of the `IResultStore` interface. You can swap it for a `PostgresResultStore` (or write your own) without changing any agent or orchestrator code. The path/URL is set via `CONDUCTOR_DB_URL`.
 
 ```python
 # main.py — minimal new consumer
@@ -289,12 +297,13 @@ from conductor_core.stores.sqlite_store import SQLiteResultStore
 from conductor_agents import TriageAgent, PlannerAgent  # reuse existing agents
 
 graph = WorkflowGraph.from_yaml("config/workflow.yaml")
-store = SQLiteResultStore("runs.db")
+store = SQLiteResultStore("runs.db")  # or PostgresResultStore for production
 orch  = WorkflowOrchestrator(
     agents={"triage": TriageAgent(llm), "planner": PlannerAgent(llm)},
     graph=graph,
     result_store=store,
 )
+# ctx carries the work item from your ingest pipeline (Snyk webhook, ADO trigger, etc.)
 ctx    = WorkflowContext(run_id="X-001", payload={"work_item": item})
 result = await orch.run(ctx)
 ```

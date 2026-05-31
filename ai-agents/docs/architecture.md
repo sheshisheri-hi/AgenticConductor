@@ -2,25 +2,36 @@
 
 ## Overview
 
-Conductor is a **three-layer** multi-agent workflow framework. Layers are independently versioned Python packages — consumers pick and choose what they need.
+Conductor is a **four-layer** multi-agent workflow framework. Layers are independently versioned Python packages — consumers pick and choose what they need.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  Layer 3: Consumer (your app)                                 │
+│  Layer 4: Consumer (your app)                                 │
 │  consumer-showcase / my-consumer                              │
 │  • workflow YAML   • StubLLM / real LLM   • main.py          │
 │  • thin wiring — just imports agents + passes to orchestrator │
 ├───────────────────────────────────────────────────────────────┤
-│  Layer 2: conductor-agents                                    │
-│  10 domain agents with prompts + SKILL.md                    │
+│  Layer 3: conductor-cli + conductor-agents                    │
+│  conductor-cli: runs, plan, trace, clean, logs commands       │
+│  conductor-agents: 10 domain agents with prompts + SKILL.md  │
 │  TriageAgent, PlannerAgent, ReviewerAgent, CodeAgent, ...    │
+├───────────────────────────────────────────────────────────────┤
+│  Layer 2: conductor-integrations                              │
+│  Pre-built source/git/notify clients                          │
+│  Sources: Snyk, SonarQube, BlackDuck, ADO (mock + live)      │
+│  Git: MockGitAgent + RealGitAgent (clone/commit/push/PR)     │
+│  Notify: mock stub (live implementations plug in here)       │
 ├───────────────────────────────────────────────────────────────┤
 │  Layer 1: conductor-core                                      │
 │  Pure framework — zero domain knowledge                       │
 │  BaseAgent, WorkflowOrchestrator, WorkflowGraph, Filters,    │
-│  Router, SQLiteResultStore, OTEL tracing                      │
+│  Router, IResultStore/SQLiteResultStore, OTEL tracing        │
 └───────────────────────────────────────────────────────────────┘
 ```
+
+### Why not LangGraph?
+
+LangGraph was evaluated as the orchestration backbone. The decision was made to build a custom pipeline instead — see [ADR-008](adr/ADR-008-custom-orchestration-vs-langgraph.md) for the full reasoning. Short version: YAML-driven sequential/parallel stages with confidence gating gave us exactly what we needed without the complexity of a stateful graph library.
 
 ---
 
@@ -150,6 +161,45 @@ This means the Reviewer can use `gpt-4-turbo` while the Planner uses `gpt-4o`, a
 | `latency_ms` | REAL | Latency for this call |
 | `estimated_cost_usd` | REAL | Cost for this call |
 
+### Total tables: 2
+
+`runs` — one row per workflow execution (summary).  
+`agent_decisions` — one row per agent per round (full audit: prompt, response, reasoning, confidence, model).
+
+> **Every LLM call is stored verbatim** — `prompt_system`, `prompt_user`, `raw_llm_response` — so you can replay, audit, or debug any decision. Use `conductor trace <run_id> --prompts --raw` to view.
+
+### Persistence abstraction
+
+`SQLiteResultStore` implements `IResultStore` (defined in `conductor_core/interfaces.py`). To use Postgres in production, implement `IResultStore` or use the provided `PostgresResultStore` — no changes to agents or orchestrator code needed.
+
+```bash
+# Dev default (zero setup)
+CONDUCTOR_DB_URL=sqlite+aiosqlite:///conductor_runs.db    # relative to where you run from
+
+# Production
+CONDUCTOR_DB_URL=postgresql+asyncpg://conductor:conductor_dev@localhost:5435/conductor
+docker compose up -d postgres
+```
+
+---
+
+## Logging
+
+Conductor uses **structlog** for structured JSON logging. By default, logs go to **stdout** only.
+
+```bash
+# .env
+CONDUCTOR_LOG_LEVEL=INFO            # DEBUG | INFO | WARNING | ERROR
+CONDUCTOR_LOG_JSON=false            # false = colored console (dev), true = JSON (prod/CI)
+CONDUCTOR_LOG_FILE=logs/conductor.log   # optional: also write to this file path
+```
+
+Key log events emitted per run:
+- `llm_call_started` / `llm_call_complete` — model, tokens, latency
+- `agent_decision` — agent, stage, confidence, recommendation, round
+- `stage_transition` — from_stage → to_stage
+- `orchestrator_complete` — total decisions, tokens, blocked status
+
 ---
 
 ## OTEL Tracing
@@ -221,7 +271,7 @@ ai-agents/
 │       ├── git/      (mock + github)
 │       └── notify/   (mock)
 │
-├── conductor-cli/               # Layer 3: planned CLI (not yet implemented)
+├── conductor-cli/               # Layer 3: conductor CLI (runs, plan, trace, clean, logs)
 │
 ├── consumer-showcase/           # Layer 3: reference consumer
 │   ├── main.py                  # CLI entry point, StubLLM, scenario wiring
