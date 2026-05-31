@@ -425,6 +425,72 @@ def cmd_logs(
 
 
 # ---------------------------------------------------------------------------
+# conductor check
+# ---------------------------------------------------------------------------
+
+@app.command("check")
+def cmd_check():
+    """Verify environment setup: token, Copilot access, and package versions."""
+    import os
+
+    console.rule("[bold]Conductor — Environment Check[/]")
+
+    # 1. Token resolution
+    _TOKEN_ENV_VARS = [
+        "CONDUCTOR_GITHUB_TOKEN",
+        "GITHUB_COPILOT_TOKEN",
+        "COPILOT_GITHUB_TOKEN",
+        "GITHUB_TOKEN",
+    ]
+    found_var = None
+    for var in _TOKEN_ENV_VARS:
+        if os.environ.get(var, "").strip():
+            found_var = var
+            break
+
+    if found_var:
+        console.print(f"  [green]✓[/] Token found via [cyan]{found_var}[/]")
+    else:
+        console.print("  [red]✗ No GitHub token found[/]")
+        console.print("    Set one of: " + ", ".join(_TOKEN_ENV_VARS))
+        console.print("    Create a token: https://github.com/settings/tokens")
+        raise typer.Exit(1)
+
+    # 2. Copilot access check
+    async def _check_copilot():
+        try:
+            sys.path.insert(0, str(_ROOT / "conductor-integrations"))
+            from conductor_integrations.llm.copilot import CopilotLLM  # noqa: E402
+            llm = CopilotLLM()
+            await llm.verify_access()
+            console.print("  [green]✓[/] Copilot API access confirmed")
+        except Exception as exc:
+            console.print(f"  [red]✗ Copilot access failed:[/] {exc}")
+            raise typer.Exit(1)
+
+    _run_async(_check_copilot())
+
+    # 3. Optional packages
+    for pkg in ["openai", "httpx"]:
+        try:
+            __import__(pkg)
+            console.print(f"  [green]✓[/] {pkg} installed")
+        except ImportError:
+            console.print(f"  [yellow]~[/] {pkg} not installed (optional, httpx is the fallback)")
+
+    # 4. .env file
+    env_path = Path.cwd() / ".env"
+    if env_path.exists():
+        console.print(f"  [green]✓[/] .env found at {env_path}")
+    else:
+        console.print(f"  [yellow]~[/] No .env found in {Path.cwd()} — using system env vars")
+
+    console.rule()
+    console.print("  [bold green]All checks passed — ready to run sample mode![/]")
+    console.print("  Try: [cyan]make demo-sample-snyk[/]")
+
+
+# ---------------------------------------------------------------------------
 # conductor version
 # ---------------------------------------------------------------------------
 
