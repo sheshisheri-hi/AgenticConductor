@@ -391,10 +391,65 @@ CONDUCTOR_OTEL_SERVICE_NAME=conductor
 
 ## Running Tests
 
+Conductor has three test levels. Each level adds more real external dependencies:
+
+### Level 1 — Unit tests (fast, zero tokens, CI-safe)
+
 ```bash
-make test              # all unit tests (fast, no LLM)
-make test-unit         # same as above
-make test-integration  # real LLM calls (requires COPILOT_GITHUB_TOKEN)
+./dev.sh test          # 176 tests across all 3 packages, ~0.5s
+```
+
+Uses `StubLLM` (pre-canned responses), mock ingest clients (fixture JSON), and `MockGitAgent` (no real git ops). No tokens or network required. Run these in CI on every push.
+
+### Level 2 — Pipeline tests (full wiring, still no real services)
+
+```bash
+./dev.sh test-integration   # 57 tests, all 5 workflows × all scenarios, ~1s
+```
+
+Runs the **complete orchestrator pipeline** end-to-end — `WorkflowOrchestrator → all 11 agents → WorkflowGraph → SQLiteResultStore` — but still with `StubLLM` and fixture data. Validates:
+- All 5 workflow YAMLs produce the correct number of decisions
+- Parallel agent groups (`review_gate`, `notify_feedback`) execute correctly
+- Agent ordering is correct (e.g. `scribe` before `git`)
+- Filters reject INFO/LOW severity before agents run
+- Results persist correctly to SQLite
+
+> **Note:** These are sometimes called "integration tests" in the pytest folder but are more accurately *pipeline/system tests with stubs* — no real LLM or scanner APIs are called.
+
+### Level 3 — Real LLM + real GitHub (requires `GITHUB_TOKEN`)
+
+```bash
+# Real LLM (CopilotLLM / gpt-4.1) + fixture data + stub git
+./dev.sh sample snyk
+
+# Real LLM + fixture data + REAL GitHub branches/PRs in conductor-sample-app
+export GITHUB_TOKEN=your_token
+export GITHUB_ORG=sheshisheri-hi
+./dev.sh sample snyk default integration        # one scenario
+./dev.sh sample-all default integration         # all 5 scenarios
+
+# Cleanup branches/PRs created by integration run
+./dev.sh clean-integration
+```
+
+### Level 4 — Live mode (all real: LLM + scanner APIs + git)
+
+```bash
+# Requires SNYK_TOKEN, SONAR_TOKEN, BLACKDUCK_TOKEN, ADO_PAT + GITHUB_TOKEN
+CONDUCTOR_PROVIDER_MODE=live ./dev.sh sample snyk
+```
+
+### Test command summary
+
+| Command | LLM | Data | Git | Token needed |
+|---|---|---|---|---|
+| `./dev.sh test` | StubLLM | Fixture | MockGit | None |
+| `./dev.sh test-integration` | StubLLM | Fixture | MockGit | None |
+| `./dev.sh sample snyk` | CopilotLLM | Fixture | MockGit | `GITHUB_TOKEN` |
+| `./dev.sh sample snyk default integration` | CopilotLLM | Fixture | **Real GitHub** | `GITHUB_TOKEN` + `GITHUB_ORG` |
+| `CONDUCTOR_PROVIDER_MODE=live ./dev.sh sample snyk` | CopilotLLM | **Real APIs** | **Real GitHub** | All tokens |
+
+```bash
 make lint              # ruff check across all packages
 ```
 
