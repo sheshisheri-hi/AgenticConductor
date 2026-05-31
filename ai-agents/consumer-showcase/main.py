@@ -26,6 +26,7 @@ from conductor_core.context import WorkflowContext
 from conductor_core.graph import WorkflowGraph
 from conductor_core.orchestrator import WorkflowOrchestrator
 from conductor_core.stores.sqlite_store import SQLiteResultStore
+from conductor_core.interfaces import IResultStore
 from conductor_integrations.sources.factory import create_ingest_client
 
 from consumer_showcase.config.settings import SentinelSettings
@@ -167,7 +168,7 @@ _STUB_TRIAGE = {
 
 async def run(
     scenario: str,
-    result_store: Optional[SQLiteResultStore] = None,
+    result_store: Optional[IResultStore] = None,
     workflow_yaml: Optional[Path] = None,
     log_file: Optional[str] = None,
     provider_mode: str = "mock",
@@ -176,7 +177,9 @@ async def run(
 
     Args:
         scenario: One of snyk/sonar/blackduck/ado-defect/ado-story.
-        result_store: Optional SQLiteResultStore. If provided, the run is persisted.
+        result_store: Optional IResultStore implementation. If provided, the run is persisted.
+                      Defaults to SQLiteResultStore when --store path is given on CLI.
+                      Swap for PostgresResultStore (or any IResultStore impl) for production.
         workflow_yaml: Override the default workflow YAML for this scenario.
         log_file: Write structured JSON logs to this path (overrides settings.log_file).
         provider_mode: One of:

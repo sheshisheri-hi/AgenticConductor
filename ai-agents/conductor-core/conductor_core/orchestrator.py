@@ -31,7 +31,7 @@ class WorkflowOrchestrator:
         orchestrator = WorkflowOrchestrator(
             agents={"triage": MyTriageAgent(llm), "reviewer": ReviewerAgent(llm)},
             graph=WorkflowGraph.from_yaml("workflow.yaml"),
-            result_store=SQLiteResultStore(),  # optional — persists every run
+            result_store=SQLiteResultStore(),  # any IResultStore impl — SQLite (dev) or Postgres (prod)
         )
         result = await orchestrator.run(context)
     """
