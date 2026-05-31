@@ -12,10 +12,12 @@ Flow:
     5. Open a draft PR via GitHub REST API
 
 Required env vars (first non-empty wins):
-    CONDUCTOR_GITHUB_TOKEN  — preferred (most specific)
-    GITHUB_COPILOT_TOKEN    — alias
-    COPILOT_GITHUB_TOKEN    — alias
+    CONDUCTOR_GIT_TOKEN     — dedicated PAT for git push/PR (repo scope required)
+    CONDUCTOR_GITHUB_TOKEN  — shared token (also used for LLM — Copilot token won't push)
     GITHUB_TOKEN            — fallback (PAT or GitHub App token with repo write access)
+
+Note: Copilot AI tokens (GITHUB_COPILOT_TOKEN / COPILOT_GITHUB_TOKEN) cannot push
+      code to repos. Set CONDUCTOR_GIT_TOKEN to a PAT with 'repo' scope.
 
 Optional env vars:
     GITHUB_ORG              — Default GitHub org/user (used when repo has no org prefix)
@@ -55,9 +57,11 @@ class RealGitAgent(FunctionalAgent):
     AGENT_NAME = "git"
 
     def __init__(self, token: str | None = None):
-        # Same resolution order as CopilotLLM — most-specific → least-specific
+        # CONDUCTOR_GIT_TOKEN is the dedicated PAT for git push (needs 'repo' scope).
+        # Falls back to the same Copilot token chain if it has been granted write access.
         self._token = (
             token
+            or os.getenv("CONDUCTOR_GIT_TOKEN")
             or os.getenv("CONDUCTOR_GITHUB_TOKEN")
             or os.getenv("GITHUB_COPILOT_TOKEN")
             or os.getenv("COPILOT_GITHUB_TOKEN")
@@ -213,7 +217,7 @@ class RealGitAgent(FunctionalAgent):
         push_url = self._authenticated_url(org, repo)
         rc, out = await self._git(
             "-c", "credential.helper=",
-            "push", push_url, f"{branch}:{branch}",
+            "push", "--force", push_url, f"{branch}:{branch}",
             cwd=workspace,
         )
         if rc != 0:
@@ -284,7 +288,8 @@ class RealGitAgent(FunctionalAgent):
             f"**Severity:** {work_item.get('severity', 'n/a')}",
         ]
         if plan:
-            lines += ["", "### Fix Plan", plan]
+            plan_str = plan if isinstance(plan, str) else "\n".join(f"- {k}: {v}" for k, v in plan.items()) if isinstance(plan, dict) else str(plan)
+            lines += ["", "### Fix Plan", plan_str]
         return "\n".join(lines)
 
     async def _git(self, *args: str, cwd: Path) -> tuple[int, str]:

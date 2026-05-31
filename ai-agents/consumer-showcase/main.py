@@ -29,7 +29,7 @@ from conductor_core.stores.sqlite_store import SQLiteResultStore
 from conductor_core.interfaces import IResultStore
 from conductor_integrations.sources.factory import create_ingest_client
 
-from consumer_showcase.config.settings import SentinelSettings
+from consumer_showcase.config.settings import ConsumerSettings
 
 log = get_logger(__name__)
 
@@ -191,7 +191,9 @@ async def run(
     Returns:
         Completed WorkflowContext.
     """
-    settings = SentinelSettings()
+    settings = ConsumerSettings()
+    from conductor_core.config.settings import ConductorSettings
+    core_settings = ConductorSettings()
     configure_logging(log_level=settings.log_level, log_file=log_file or settings.log_file)
 
     if provider_mode in ("sample", "integration", "live"):
@@ -243,13 +245,13 @@ async def run(
         run_id=f"{item.id}-demo",
         payload={
             "work_item": item.model_dump(),
-            "github_org": os.getenv("GITHUB_ORG", ""),
+            "github_org": settings.github_org,
         },
-        mode="plan",
+        mode="execute" if core_settings.code_execution_enabled else "plan",
     )
 
     log.info("demo.starting", scenario=scenario, item_id=item.id, severity=item.severity)
-    result = await orch.run(ctx)
+    result = await orch.run(ctx, mode=ctx.mode)
     log.info(
         "demo.complete",
         scenario=scenario,

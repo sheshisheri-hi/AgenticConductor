@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 import pytest
 
-from consumer_showcase.config.settings import SentinelSettings
+from consumer_showcase.config.settings import ConsumerSettings
 from conductor_core.context import WorkflowContext
 
 
 # ── settings ─────────────────────────────────────────────────────────────────
 
 def test_sentinel_settings_defaults():
-    s = SentinelSettings()
+    s = ConsumerSettings()
     assert s.provider_mode == "mock"
     assert s.snyk_token is None
     assert s.ado_token is None
@@ -20,8 +20,8 @@ def test_sentinel_settings_defaults():
 
 
 def test_sentinel_settings_override(monkeypatch):
-    monkeypatch.setenv("SENTINEL_SLACK_CHANNEL", "#infosec")
-    s = SentinelSettings()
+    monkeypatch.setenv("CONSUMER_SLACK_CHANNEL", "#infosec")
+    s = ConsumerSettings()
     assert s.slack_channel == "#infosec"
 
 

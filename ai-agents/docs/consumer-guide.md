@@ -363,15 +363,67 @@ python ../../consumer-showcase/scripts/show_all.py --store runs.db
 
 ---
 
+## Settings & Environment Variable Hierarchy
+
+Conductor uses **pydantic-settings** with a two-level inheritance chain:
+
+```
+ConductorSettings  (env_prefix="CONDUCTOR_")   ← framework base, lives in conductor-core
+    └── ConsumerSettings (env_prefix="CONSUMER_")  ← your consumer, add your own vars here
+```
+
+**How the prefix works:**  
+pydantic-settings reads `.env` and shell env, then strips the prefix to map to field names.  
+- `CONDUCTOR_LLM_MODEL` → `ConductorSettings.llm_model`  
+- `CONSUMER_SNYK_TOKEN` → `ConsumerSettings.snyk_token`  
+- Fields with an explicit `alias=` (e.g. `alias="GITHUB_ORG"`) bypass the prefix entirely.
+
+**Important:** pydantic-settings does **not** write to `os.environ`. If you need an env var accessible via `os.getenv()` outside pydantic (e.g. in a third-party library), always declare it as a field with `alias=`.
+
+**Override precedence** (highest wins):
+1. Shell environment variables
+2. `.env` file
+3. Field `default=` values
+
+**To add your own env vars**, extend `ConsumerSettings`:
+```python
+from consumer_showcase.config.settings import ConsumerSettings
+from pydantic import Field
+
+class MyConsumerSettings(ConsumerSettings):
+    model_config = SettingsConfigDict(env_prefix="MYAPP_", env_file=".env", extra="ignore")
+
+    my_api_key: str | None = Field(default=None)          # reads MYAPP_MY_API_KEY
+    github_org: str = Field(default="", alias="GITHUB_ORG")  # reads GITHUB_ORG directly (no prefix)
+```
+
+**Full variable reference:**
+
+| Variable | Prefix | Description |
+|---|---|---|
+| `CONDUCTOR_PROVIDER_MODE` | framework | `mock` / `sample` / `live` |
+| `CONDUCTOR_LLM_MODEL` | framework | Default model (`gpt-4.1`) |
+| `CONDUCTOR_REVIEWER_MODEL` | framework | Adversarial reviewer model (auto-differs from planner) |
+| `CONDUCTOR_CODE_EXECUTION_ENABLED` | framework | `true` to run git/PR in execute mode |
+| `CONDUCTOR_DB_URL` | framework | SQLite path or Postgres URL for result store |
+| `CONDUCTOR_GIT_TOKEN` | framework | PAT for git push + PR creation (`repo` scope) |
+| `GITHUB_ORG` | alias | Target GitHub org/user for git agent |
+| `CONSUMER_SNYK_TOKEN` | consumer | Snyk API token (live mode) |
+| `CONSUMER_SONAR_TOKEN` | consumer | SonarQube/SonarCloud token |
+| `CONSUMER_BLACKDUCK_TOKEN` | consumer | Black Duck API token |
+| `CONSUMER_ADO_PAT` | consumer | Azure DevOps PAT |
+
+---
+
 ## Adding Real LLM + Live Sources
 
 ```bash
 # .env
 CONDUCTOR_PROVIDER_MODE=live
 CONDUCTOR_LLM_MODEL=gpt-4o
-GITHUB_TOKEN=ghp_...
+CONDUCTOR_GIT_TOKEN=ghp_...   # classic PAT with 'repo' scope
 
-# For adversarial reviewer to use a different model
+# Adversarial reviewer auto-picks a different model; override if needed:
 CONDUCTOR_REVIEWER_MODEL=gpt-4-turbo
 ```
 

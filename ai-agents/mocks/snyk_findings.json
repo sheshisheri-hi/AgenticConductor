@@ -6,7 +6,7 @@
   "severity": "HIGH",
   "description": "requests before 2.31.0 allows SSRF via Proxy-Authorization header leak when redirected to an untrusted host. Upgrade to requests>=2.31.0.",
   "url": "https://security.snyk.io/vuln/SNYK-PYTHON-REQUESTS-5595532",
-  "repo_name": "sample-app",
+  "repo_name": "conductor-sample-app",
   "file_path": "samples/snyk/requirements_vulnerable.txt",
   "line_number": 2,
   "metadata": {
