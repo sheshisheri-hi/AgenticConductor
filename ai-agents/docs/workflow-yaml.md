@@ -196,10 +196,20 @@ Useful for showing the plan without applying any code changes.
 
 | Aspect | `mode: plan` | `mode: execute` |
 |---|---|---|
-| What runs | Triage → Analysis → Plan | Full 11 stages including code, git, notify |
+| What runs | Triage → Analysis → Plan, then halt | All stages including code, review, scribe, git, notify |
 | `stop_before: true` stages | Pipeline halts before that stage | Stage runs normally |
-| Real side effects | None | Git branch/commit/PR, Slack post |
-| Typical use | PR review, cost estimate, human approval | Fully automated remediation |
+| Side effects (showcase) | None | LLM generates code changes + commit messages in-memory (see note) |
+| Typical use | Cost estimate, human approval before commit | Full end-to-end pipeline demo |
+
+> **Important — showcase vs production:** In the consumer-showcase, `execute` mode is a
+> **simulation**. The agents run real LLM calls and produce real reasoning, but:
+> - **CodeAgent** generates `code_changes` JSON in the context payload — it does **not** write files to disk
+> - **ScribeAgent** generates commit messages and PR descriptions — it does **not** create git commits
+> - **GitAgent** is a functional stub — it sets a `branch_name` and `pr_url` in the context but makes **no real GitHub API calls**
+> - **NotifyAgent** logs a notification decision — no Slack/email sent
+>
+> In a production integration you would swap these stubs with real implementations
+> (e.g. a `GitAgent` that calls `gh pr create`, a `NotifyAgent` that posts to Slack).
 
 Switch globally:
 ```yaml
@@ -207,46 +217,92 @@ workflow:
   mode: execute
 ```
 
-Or override at runtime (CLI not yet exposed — pass `mode` arg to `orch.run(ctx, mode="execute")`).
+Or override at runtime (pass `mode` arg to `orch.run(ctx, mode="execute")`).
 
 ---
 
-## The 4 Showcase Configurations
+## The 5 Showcase Configurations
 
-### `workflow_security.yaml` — Plan-only for Snyk/Sonar/BlackDuck
+### `workflow.yaml` — Default full pipeline
+
+```
+triage → security_analysis → resolve → plan → [HALT]
+         ↳ parallel review_gate: security_gatekeeper + reviewer (all_must_pass)
+         ↳ parallel notify_feedback: notify + feedback (first_pass)
+```
+- Sources: snyk, sonar, blackduck, ado, mock — widest coverage
+- Halts before `code` in plan mode
+- `dev.sh` shortname: `default`
+
+### `workflow_security.yaml` — Security sources only
 
 ```
 triage → security_analysis → resolve → plan → [HALT]
 ```
-- Filters: reject info/low + null repos
-- Routes: security findings → `security_remediation`
-- Halts before `code` stage
-- Use for: reviewing what the fix would be without applying it
+- Same pipeline as default but **routes only** snyk/sonar/blackduck (no ado/mock)
+- Use for: enforcing security-source-only routing in shared environments
+- `dev.sh` shortname: `security`
+
+### `workflow_adversarial.yaml` — Adversarial review gate
+
+```
+triage → security_analysis → resolve → plan → [HALT]
+         ↳ parallel adversarial_gate: security_gatekeeper + reviewer (all_must_pass, uses CONDUCTOR_REVIEWER_MODEL)
+```
+- **Stricter filter**: rejects `info` AND `low` severity (adversarial review is expensive)
+- The reviewer agent uses `CONDUCTOR_REVIEWER_MODEL` — a **different model** from the planner — to independently critique the fix plan
+- No `notify_feedback` stage — focused on adversarial critique only
+- Use for: demonstrating multi-model independent review
+- `dev.sh` shortname: `adversarial`
 
 ### `workflow_ado.yaml` — ADO defects and stories
 
 ```
-triage → resolve → plan → [HALT]
+triage → plan → [HALT]
+         ↳ parallel review_gate: security_gatekeeper + reviewer (all_must_pass)
+         ↳ parallel notify_feedback: notify + feedback (first_pass)
 ```
-- Skips `security_analysis` (no CVE scoring for ADO items)
-- Routes: ADO → `ado_remediation`
-- Use for: feature work and defect triaging
+- **Skips `security_analysis` and `resolve`** — no CVE scoring for ADO items
+- Routes: ado/mock sources only
+- **2 decisions** vs 4 for security workflows — ~50% faster and cheaper
+- `dev.sh` shortname: `ado`
 
-### `workflow_execute.yaml` — Full automated pipeline
-
-```
-triage → security_analysis → resolve → plan → code → review → scribe → git → notify → feedback → [terminal]
-```
-- No `stop_before` — all stages run
-- Use for: fully automated remediation with real git operations
-
-### `workflow_adversarial.yaml` — Adversarial review showcase
+### `workflow_execute.yaml` — Full execution (all 11 stages)
 
 ```
-triage → security_analysis → resolve → plan → adversarial_gate (reviewer, model=gpt-4-turbo) → scribe → [HALT]
+triage → security_analysis → resolve → plan → code → [parallel review_gate] → document → deliver → [parallel notify_feedback] → terminal
 ```
-- Per-stage model override on `adversarial_gate`
-- Use for: demonstrating multi-model reasoning
+- **Only YAML with `mode: execute`** — no `stop_before`, all stages run
+- Runs `code` (LLM generates code changes), `scribe` (LLM writes commit messages/PR descriptions), `git` (creates branch + PR stub), `notify`+`feedback` in parallel
+- **13 decisions**, ~7000+ tokens — the highest-cost workflow
+- See note above: code/git/notify are showcase stubs in this repo
+- `dev.sh` shortname: `execute`
+
+---
+
+## Running Each Workflow
+
+```bash
+# Mock (no token needed) — instant, zero cost
+./dev.sh demo snyk default       # default pipeline
+./dev.sh demo snyk security      # security-only routing
+./dev.sh demo snyk adversarial   # adversarial review gate
+./dev.sh demo ado-defect ado     # ADO 2-stage pipeline
+./dev.sh demo snyk execute       # full 11-stage execution
+
+# Real LLM (needs CONDUCTOR_GITHUB_TOKEN / GITHUB_COPILOT_TOKEN)
+./dev.sh sample snyk default
+./dev.sh sample snyk adversarial
+./dev.sh sample snyk execute     # ~13 LLM calls, ~22 seconds
+```
+
+Or via Makefile:
+```bash
+make demo-adversarial      # snyk + adversarial workflow (mock)
+make demo-security         # snyk + security workflow (mock)
+make demo-ado-workflow     # ado-defect + ado workflow (mock)
+make demo-sample-adversarial   # real LLM
+```
 
 ---
 
