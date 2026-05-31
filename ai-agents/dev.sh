@@ -158,6 +158,13 @@ case "$CMD" in
     ok "All tests passed."
     ;;
 
+  test-integration)
+    ensure_venv
+    log "Running integration tests (all 5 workflows × all scenarios)..."
+    (cd consumer-showcase && "$VENV/bin/pytest" tests/integration -v --tb=short)
+    ok "All integration tests passed."
+    ;;
+
   clean)
     # ./dev.sh clean         → remove venv + build artifacts
     # ./dev.sh clean db      → remove SQLite DBs only
@@ -288,6 +295,7 @@ case "$CMD" in
     echo ""
     echo "  Other:"
     echo "    ./dev.sh test                   — run all unit tests"
+    echo "    ./dev.sh test-integration       — run integration tests (all 5 workflows × all scenarios)"
     echo "    ./dev.sh clean                  — remove venv + build artifacts"
     echo "    ./dev.sh clean db               — remove SQLite databases (/tmp/runs*.db)"
     echo "    ./dev.sh clean all              — remove everything (venv + artifacts + DBs)"
