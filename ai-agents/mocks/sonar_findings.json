@@ -1,0 +1,26 @@
+{
+  "id": "SONAR-001",
+  "title": "SQL Injection in auth_handler.py:get_user()",
+  "source": "sonar",
+  "type": "vulnerability",
+  "severity": "CRITICAL",
+  "description": "User-controlled input 'username' is concatenated directly into a SQL query at line 28. An attacker can manipulate the query to bypass authentication or exfiltrate data. Use parameterized queries: cursor.execute(\"SELECT * FROM users WHERE username=?\", (username,))",
+  "url": "https://sonarcloud.io/project/issues?id=sample-app&issues=SONAR-001",
+  "repo_name": "sample-app",
+  "file_path": "samples/sonar/auth_handler.py",
+  "line_number": 28,
+  "metadata": {
+    "rule": "python:S3649",
+    "rule_name": "Database queries should not be vulnerable to injection attacks",
+    "debt": "30min",
+    "tags": ["cwe-89", "owasp-a3"],
+    "additional_findings": [
+      {
+        "rule": "python:S2068",
+        "message": "Hardcoded credential at line 14",
+        "severity": "HIGH",
+        "line": 14
+      }
+    ]
+  }
+}

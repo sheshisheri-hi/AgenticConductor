@@ -1,0 +1,25 @@
+{
+  "id": "ADO-STORY-1337",
+  "title": "[STORY] Implement paginate() utility for list pagination",
+  "source": "ado",
+  "type": "user_story",
+  "severity": "LOW",
+  "description": "As a developer I can call paginate(items, page, page_size) to receive a dict with the requested page slice plus pagination metadata (total_pages, total_items, page, page_size). The function must handle edge cases: empty list, page beyond last page, page_size of 1.",
+  "url": "https://dev.azure.com/myorg/myproject/_workitems/edit/1337",
+  "repo_name": "sample-app",
+  "file_path": "samples/ado/feature_stub.py",
+  "line_number": 16,
+  "metadata": {
+    "story_points": 2,
+    "area_path": "MyProject\\Utilities",
+    "iteration": "Sprint 42",
+    "assigned_to": "automation",
+    "tags": ["utility", "pagination"],
+    "acceptance_criteria": [
+      "paginate([], 1, 10) returns {page:1, page_size:10, total_pages:0, total_items:0, items:[]}",
+      "paginate(list(range(25)), 2, 10) returns items [10..19]",
+      "paginate(list(range(5)), 99, 10) returns items [] with total_pages=1",
+      "Unit tests written and passing"
+    ]
+  }
+}

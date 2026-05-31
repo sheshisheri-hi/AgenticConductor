@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conductor-agents"
+version = "0.1.0"
+description = "Reusable security pipeline agents for the Conductor framework"
+requires-python = ">=3.11"
+dependencies = [
+    "conductor-core",
+    "pydantic>=2.0",
+    "structlog>=24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["conductor_agents*"]
+
+[tool.setuptools.package-data]
+conductor_agents = ["**/*.md"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

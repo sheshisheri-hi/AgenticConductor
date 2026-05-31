@@ -1,0 +1,10 @@
+# Sample code: vulnerable dependencies
+# Used by mock Snyk scanner
+# Issues: requests==2.18.0 (CVE-2023-32681), flask==0.12.4 (multiple CVEs)
+
+requests==2.18.0
+flask==0.12.4
+Pillow==8.0.0
+PyYAML==3.13
+lxml==4.4.0
+cryptography==2.6.1

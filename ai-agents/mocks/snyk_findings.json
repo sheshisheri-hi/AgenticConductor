@@ -1,0 +1,21 @@
+{
+  "id": "SNYK-001",
+  "title": "Vulnerability in requests 2.18.0: CVE-2023-32681",
+  "source": "snyk",
+  "type": "vulnerability",
+  "severity": "HIGH",
+  "description": "requests before 2.31.0 allows SSRF via Proxy-Authorization header leak when redirected to an untrusted host. Upgrade to requests>=2.31.0.",
+  "url": "https://security.snyk.io/vuln/SNYK-PYTHON-REQUESTS-5595532",
+  "repo_name": "sample-app",
+  "file_path": "samples/snyk/requirements_vulnerable.txt",
+  "line_number": 2,
+  "metadata": {
+    "cve": "CVE-2023-32681",
+    "cvss_score": 6.1,
+    "package": "requests",
+    "vulnerable_version": "2.18.0",
+    "fix_version": "2.31.0",
+    "epss": 0.04,
+    "exploit_maturity": "proof-of-concept"
+  }
+}

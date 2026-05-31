@@ -1,0 +1,73 @@
+workflow:
+  name: adversarial_review
+  description: |
+    Security pipeline with adversarial review configuration.
+    Reviewer and SecurityGatekeeper use a DIFFERENT model than planner/code
+    to provide independent critique.  Set CONDUCTOR_REVIEWER_MODEL env var
+    to choose the adversarial model (e.g. o1-preview, claude-3-5-sonnet-20241022).
+    Falls back to gpt-4o if not set.
+  mode: plan
+
+filters:
+  - type: reject_if_in
+    field: work_item.severity
+    values: [info, low]   # stricter: skip low too — adversarial review is expensive
+  - type: reject_if_null
+    field: work_item.repo_name
+
+routes:
+  - match:
+      source: [snyk, sonar, blackduck]
+    graph: adversarial_review
+  - match:
+      source: ["*"]
+    graph: escalate_human
+
+stages:
+  - name: triage
+    agent: triage
+    on_proceed: security_analysis
+    on_block: terminal
+    # Uses global llm_model (e.g. gpt-4o)
+
+  - name: security_analysis
+    agent: security_analyst
+    on_proceed: resolve
+    on_block: terminal
+    # Uses global llm_model
+
+  - name: resolve
+    agent: resolver
+    on_proceed: plan
+    on_block: terminal
+
+  - name: plan
+    agent: planner
+    on_proceed: code
+    on_block: terminal
+    # Uses global llm_model — this model's output is what adversary critiques
+
+  - name: code
+    agent: code
+    stop_before: true
+    on_proceed: adversarial_gate
+    on_block: terminal
+
+  - name: adversarial_gate
+    on_proceed: document
+    on_block: terminal
+
+  - name: document
+    agent: scribe
+    on_proceed: terminal
+    on_block: terminal
+
+parallel_groups:
+  - trigger_stage: adversarial_gate
+    agents: [security_gatekeeper, reviewer]
+    merge_strategy: all_must_pass
+    next_stage_on_pass: document
+    next_stage_on_block: terminal
+    # Both agents use MODEL_OVERRIDE = settings.reviewer_model
+    # which is driven by CONDUCTOR_REVIEWER_MODEL env var
+    # → adversarial: different model critiques the plan from planner

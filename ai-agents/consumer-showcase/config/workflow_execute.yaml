@@ -1,0 +1,75 @@
+workflow:
+  name: full_execution
+  description: "Full pipeline: all 11 stages including code generation, review gate, scribe, git, delivery"
+  mode: execute
+
+filters:
+  - type: reject_if_in
+    field: work_item.severity
+    values: [info]
+  - type: reject_if_null
+    field: work_item.repo_name
+
+routes:
+  - match:
+      source: [snyk, sonar, blackduck]
+    graph: full_execution
+  - match:
+      source: ["*"]
+    graph: escalate_human
+
+stages:
+  - name: triage
+    agent: triage
+    on_proceed: security_analysis
+    on_block: terminal
+
+  - name: security_analysis
+    agent: security_analyst
+    on_proceed: resolve
+    on_block: terminal
+
+  - name: resolve
+    agent: resolver
+    on_proceed: plan
+    on_block: terminal
+
+  - name: plan
+    agent: planner
+    on_proceed: code
+    on_block: terminal
+
+  - name: code
+    agent: code
+    on_proceed: review_gate
+    on_block: terminal
+
+  - name: review_gate
+    on_proceed: document
+    on_block: terminal
+
+  - name: document
+    agent: scribe
+    on_proceed: deliver
+    on_block: terminal
+
+  - name: deliver
+    agent: git
+    on_proceed: notify_feedback
+    on_block: terminal
+
+  - name: notify_feedback
+    on_proceed: terminal
+    on_block: terminal
+
+parallel_groups:
+  - trigger_stage: review_gate
+    agents: [security_gatekeeper, reviewer]
+    merge_strategy: all_must_pass
+    next_stage_on_pass: document
+    next_stage_on_block: terminal
+  - trigger_stage: notify_feedback
+    agents: [notify, feedback]
+    merge_strategy: first_pass
+    next_stage_on_pass: terminal
+    next_stage_on_block: terminal

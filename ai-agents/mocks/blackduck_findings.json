@@ -1,0 +1,28 @@
+{
+  "id": "BD-001",
+  "title": "GPL-3.0-only license in PyPDF2 — copyleft obligation",
+  "source": "blackduck",
+  "type": "license_violation",
+  "severity": "HIGH",
+  "description": "PyPDF2 is licensed under GPL-3.0-only. Using it in commercial software creates copyleft obligations that require the entire codebase to be open-sourced under GPL. Recommended replacement: pypdf (Apache-2.0) or reportlab (commercial license available).",
+  "url": "https://blackduck.example.com/api/projects/sample-app/versions/1.0/components/PyPDF2",
+  "repo_name": "sample-app",
+  "file_path": "samples/blackduck/package_copyleft.py",
+  "line_number": 12,
+  "metadata": {
+    "component": "PyPDF2",
+    "component_version": "3.0.1",
+    "license": "GPL-3.0-only",
+    "policy_violation": true,
+    "risk_profile": {
+      "license_risk": "HIGH",
+      "vulnerability_risk": "LOW",
+      "operational_risk": "LOW"
+    },
+    "recommended_replacement": {
+      "package": "pypdf",
+      "version": ">=3.0.0",
+      "license": "Apache-2.0"
+    }
+  }
+}
