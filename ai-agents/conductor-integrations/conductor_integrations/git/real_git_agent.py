@@ -303,8 +303,11 @@ class RealGitAgent(FunctionalAgent):
         return proc.returncode, output
 
 
-def _extract_files(code_changes: dict, repo_name: str) -> list[dict]:
+def _extract_files(code_changes: dict | list, repo_name: str) -> list[dict]:
     """Pull the file list from code_changes regardless of nesting format."""
+    if isinstance(code_changes, list):
+        return code_changes
+
     if repo_name in code_changes:
         entry = code_changes[repo_name]
         if isinstance(entry, dict) and "files" in entry:
@@ -317,8 +320,5 @@ def _extract_files(code_changes: dict, repo_name: str) -> list[dict]:
             return val["files"]
         if isinstance(val, list):
             return val
-
-    if isinstance(code_changes, list):
-        return code_changes
 
     return []
