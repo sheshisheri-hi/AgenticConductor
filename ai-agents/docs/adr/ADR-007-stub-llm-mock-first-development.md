@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-01  
-**Mirrors:** Original Aspen-Sentinel `docs/decisions/ADR-001-mock-first-provider-pattern.md`
+**Mirrors:** Original Coding-Agent `docs/decisions/ADR-001-mock-first-provider-pattern.md`
 
 ---
 

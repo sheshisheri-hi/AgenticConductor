@@ -7,7 +7,7 @@
 
 ## Context
 
-The original Aspen-Sentinel pipeline ran all agents sequentially. Post-code review involved a `SecurityAgent` and a `ReviewerAgent` running one-after-the-other on the same code diff. The second agent could be anchored by the first's output (if context was passed naively).
+The original Coding-Agent pipeline ran all agents sequentially. Post-code review involved a `SecurityAgent` and a `ReviewerAgent` running one-after-the-other on the same code diff. The second agent could be anchored by the first's output (if context was passed naively).
 
 Two multi-agent execution patterns were considered:
 

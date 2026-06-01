@@ -1,6 +1,6 @@
 """Structured JSON logging for Conductor.
 
-Promoted from Aspen-Sentinel's logging_config.py — now a conductor-core primitive.
+Promoted from Coding-Agent's logging_config.py — now a conductor-core primitive.
 All log output is structured via structlog. No print() or unstructured logging.
 
 Log output goes to:
