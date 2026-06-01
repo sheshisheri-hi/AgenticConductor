@@ -63,9 +63,17 @@ ensure_venv() {
 
 # ── commands ───────────────────────────────────────────────────────────────
 CMD="${1:-demo}"
-SCENARIO="${2:-snyk}"
-WORKFLOW_ARG="${3:-default}"
-PROVIDER_ARG="${4:-}"  # optional: integration | live (overrides default for the command)
+
+# Handle sample-all differently (no scenario arg)
+if [ "$CMD" = "sample-all" ] || [ "$CMD" = "demo-all" ]; then
+  SCENARIO=""
+  WORKFLOW_ARG="${2:-execute}"
+  PROVIDER_ARG="${3:-}"
+else
+  SCENARIO="${2:-snyk}"
+  WORKFLOW_ARG="${3:-default}"
+  PROVIDER_ARG="${4:-}"
+fi
 
 # Resolve workflow YAML path from short name
 # Usage: WORKFLOW_FILE=$(resolve_workflow "adversarial")
@@ -226,19 +234,20 @@ case "$CMD" in
     ;;
 
   clean-integration)
-    # Delete all conductor/* branches + open PRs from test repos after integration testing
+    # Delete all conductor-fix/* branches + open PRs from test repos after integration testing
     ensure_venv
     ORG="${GITHUB_ORG:-sheshisheri-hi}"
     REPO="${CONDUCTOR_INTEGRATION_REPO:-conductor-sample-app}"
-    TOKEN="${GITHUB_TOKEN:-${CONDUCTOR_GITHUB_TOKEN:-}}"
+    TOKEN="${GITHUB_TOKEN:-${CONDUCTOR_GITHUB_TOKEN:-${GITHUB_COPILOT_TOKEN:-}}}"
     if [ -z "$TOKEN" ]; then
       err "GITHUB_TOKEN or CONDUCTOR_GITHUB_TOKEN must be set to clean integration branches"
     fi
-    log "Cleaning conductor/* branches and open PRs in $ORG/$REPO..."
-    # List and close open PRs with conductor/* head branches
+    BRANCH_PREFIX="${CONDUCTOR_BRANCH_PREFIX:-conductor-fix}"
+    log "Cleaning ${BRANCH_PREFIX}/* branches and open PRs in $ORG/$REPO..."
+    # List and close open PRs with conductor-fix/* head branches
     OPEN_PRS=$(curl -sf -H "Authorization: token $TOKEN" \
       "https://api.github.com/repos/$ORG/$REPO/pulls?state=open&per_page=100" \
-      | "$PYTHON" -c "import sys,json; [print(p['number'],p['head']['ref']) for p in json.load(sys.stdin) if p['head']['ref'].startswith('conductor/')]" 2>/dev/null || true)
+      | "$PYTHON" -c "import sys,json,os; prefix=os.environ.get('CONDUCTOR_BRANCH_PREFIX','conductor-fix'); [print(p['number'],p['head']['ref']) for p in json.load(sys.stdin) if p['head']['ref'].startswith(prefix+'/')]" 2>/dev/null || true)
     if [ -n "$OPEN_PRS" ]; then
       while IFS=' ' read -r pr_num branch_name; do
         log "Closing PR #$pr_num ($branch_name)..."
@@ -246,17 +255,21 @@ case "$CMD" in
           "https://api.github.com/repos/$ORG/$REPO/pulls/$pr_num" \
           -d '{"state":"closed"}' > /dev/null
       done <<< "$OPEN_PRS"
+    else
+      log "No open PRs found with ${BRANCH_PREFIX}/* branches."
     fi
-    # Delete conductor/* branches
+    # Delete conductor-fix/* branches
     BRANCHES=$(curl -sf -H "Authorization: token $TOKEN" \
       "https://api.github.com/repos/$ORG/$REPO/branches?per_page=100" \
-      | "$PYTHON" -c "import sys,json; [print(b['name']) for b in json.load(sys.stdin) if b['name'].startswith('conductor/')]" 2>/dev/null || true)
+      | "$PYTHON" -c "import sys,json,os; prefix=os.environ.get('CONDUCTOR_BRANCH_PREFIX','conductor-fix'); [print(b['name']) for b in json.load(sys.stdin) if b['name'].startswith(prefix+'/')]" 2>/dev/null || true)
     if [ -n "$BRANCHES" ]; then
       while IFS= read -r branch_name; do
         log "Deleting branch $branch_name..."
         curl -sf -X DELETE -H "Authorization: token $TOKEN" \
           "https://api.github.com/repos/$ORG/$REPO/git/refs/heads/$branch_name" > /dev/null
       done <<< "$BRANCHES"
+    else
+      log "No ${BRANCH_PREFIX}/* branches found."
     fi
     ok "Integration cleanup done for $ORG/$REPO"
     ;;
@@ -281,8 +294,8 @@ case "$CMD" in
     echo "    ./dev.sh sample [scenario] [workflow]              — real LLM + fixture data, stub git"
     echo "    ./dev.sh sample snyk adversarial                   — real LLM + adversarial workflow"
     echo "    ./dev.sh sample snyk default integration           — real LLM + REAL branches/PRs in test repo"
-    echo "    ./dev.sh sample-all [workflow]                     — all 5 real LLM scenarios"
-    echo "    ./dev.sh sample-all default integration            — all 5 with real git operations"
+    echo "    ./dev.sh sample-all [workflow] [mode]              — all 5 real LLM scenarios"
+    echo "    ./dev.sh sample-all execute integration           — all 5 with real git operations + full pipeline"
     echo ""
     echo "  View results:"
     echo "    ./dev.sh runs                   — list mock runs"

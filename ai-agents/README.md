@@ -314,24 +314,24 @@ For the full consumer guide (custom agents, prompts, testing): **[docs/consumer-
 
 ## Environment Variables
 
-See [`.env.example`](.env.example) for the full list.
+See [`.env.example`](.env.example) for the full list. For the full hierarchy and prefix rules, see [docs/consumer-guide.md](docs/consumer-guide.md#settings--environment-variable-hierarchy).
 
 Key variables:
 
 | Variable | Default | Description |
 |---|---|---|
 | `CONDUCTOR_PROVIDER_MODE` | `mock` | `mock` / `sample` / `integration` / `live` |
-| `CONDUCTOR_CODE_EXECUTION_ENABLED` | `false` | Enable execute mode |
+| `CONDUCTOR_CODE_EXECUTION_ENABLED` | `false` | Enable execute mode (git push + PR) |
 | `CONDUCTOR_LLM_MODEL` | `gpt-4.1` | Default LLM model for all agents |
-| `CONDUCTOR_REVIEWER_MODEL` | `gpt-4.1` | Model for adversarial ReviewerAgent |
+| `CONDUCTOR_REVIEWER_MODEL` | `gpt-4.1` | Model for adversarial ReviewerAgent (should differ from LLM_MODEL) |
 | `CONDUCTOR_LOG_LEVEL` | `INFO` | Log level |
 | `CONDUCTOR_CONFIDENCE_THRESHOLD` | `0.7` | Min confidence to proceed |
-| `COPILOT_GITHUB_TOKEN` | — | GitHub token for Copilot LLM (sample/integration/live) |
+| `COPILOT_GITHUB_TOKEN` | — | GitHub token for Copilot LLM (sample/integration/live). Token resolution chain: `CONDUCTOR_GIT_TOKEN` → `CONDUCTOR_GITHUB_TOKEN` → `GITHUB_COPILOT_TOKEN` → `COPILOT_GITHUB_TOKEN` → `GITHUB_TOKEN` |
 | `CONDUCTOR_DB_URL` | `sqlite+aiosqlite:///conductor_runs.db` | Result store database URL |
 | `CONDUCTOR_OTEL_ENDPOINT` | _(none)_ | OTLP gRPC endpoint for traces |
 | `CONDUCTOR_OTEL_SERVICE_NAME` | `conductor` | Service name in trace UIs |
-| `GITHUB_ORG` | — | GitHub org/user for real git ops (integration/live) |
-| `CONDUCTOR_BRANCH_PREFIX` | `conductor` | Branch prefix for real git ops |
+| `GITHUB_ORG` | — | GitHub org/user for real git ops (integration/live). Uses `alias=` — no prefix needed. |
+| `CONDUCTOR_BRANCH_PREFIX` | `conductor-fix` | Branch prefix for real git ops |
 | `CONDUCTOR_GIT_EMAIL` | `conductor-bot@users.noreply.github.com` | Git commit author email |
 | `SNYK_TOKEN` | — | Snyk API token (live mode only) |
 | `SNYK_ORG_ID` | — | Snyk organisation ID (live mode only) |
@@ -339,6 +339,14 @@ Key variables:
 | `SONAR_TOKEN` | — | SonarQube user token (live mode only) |
 | `ADO_ORG` | — | Azure DevOps org URL e.g. `https://dev.azure.com/myorg` (live mode only) |
 | `ADO_PAT` | — | Azure DevOps Personal Access Token (live mode only) |
+
+**Consumer-level overrides** (consumer-showcase only): Variables prefixed `CONSUMER_` override `CONDUCTOR_` defaults for that consumer. See `consumer-showcase/consumer_showcase/config/settings.py`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `CONSUMER_SLACK_CHANNEL` | `#security-alerts` | Slack channel for notifications |
+| `CONSUMER_SLACK_TOKEN` | — | Slack Bot token for notify agent |
+| `CONSUMER_PAGERDUTY_KEY` | — | PagerDuty integration key |
 
 ---
 

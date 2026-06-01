@@ -36,10 +36,12 @@ class ConductorSettings(BaseSettings):
     # declare their own MODEL_OVERRIDE class variable.  YAML stage `model:` field
     # takes highest priority.  Environment variables use the CONDUCTOR_ prefix.
     #
-    # Adversarial reviewer deliberately uses a *different* model so that its
-    # critique is independent of the model that produced the plan/code.
+    # Adversarial reviewer ideally uses a *different* model so its critique is
+    # independent of the model that produced the plan/code.  When only one model
+    # is available (common with Copilot tokens), set this to the same model —
+    # the adversarial effect comes from the system prompt, not the model name.
     # Approved models: gpt-4.1, gpt-4.1-mini, gpt-4o, gpt-4-turbo, o1-preview, o3-mini
-    reviewer_model: str = "gpt-4o"  # override with CONDUCTOR_REVIEWER_MODEL; defaults to gpt-4o (differs from planner)
+    reviewer_model: str = "gpt-4.1"  # override with CONDUCTOR_REVIEWER_MODEL
 
     # Agent behavior
     confidence_threshold: float = 0.80

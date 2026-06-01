@@ -3,7 +3,7 @@
   "title": "[STORY] Implement paginate() utility for list pagination",
   "source": "ado",
   "type": "user_story",
-  "severity": "LOW",
+  "severity": "MEDIUM",
   "description": "As a developer I can call paginate(items, page, page_size) to receive a dict with the requested page slice plus pagination metadata (total_pages, total_items, page, page_size). The function must handle edge cases: empty list, page beyond last page, page_size of 1.",
   "url": "https://dev.azure.com/myorg/myproject/_workitems/edit/1337",
   "repo_name": "conductor-sample-app",
