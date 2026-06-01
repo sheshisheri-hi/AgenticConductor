@@ -2,13 +2,13 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-05  
-**Evolves:** Original Aspen-Sentinel `docs/decisions/ADR-002-plan-first-execution-flag.md`
+**Evolves:** Original Coding-Agent `docs/decisions/ADR-002-plan-first-execution-flag.md`
 
 ---
 
 ## Context
 
-The original Aspen-Sentinel enforced plan-first behavior via a Python env flag `ASPEN_CODE_EXECUTION_ENABLED`. Setting it to `false` halted the pipeline before any code-modifying stage. This was a binary global flag — no way to stop at a different stage or have multiple execution profiles.
+The original Coding-Agent enforced plan-first behavior via a Python env flag `ASPEN_CODE_EXECUTION_ENABLED`. Setting it to `false` halted the pipeline before any code-modifying stage. This was a binary global flag — no way to stop at a different stage or have multiple execution profiles.
 
 The Conductor rewrite needed a more expressive mechanism:
 - **Plan mode**: run analysis, security review, planning — stop before code changes

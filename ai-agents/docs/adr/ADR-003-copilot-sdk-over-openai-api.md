@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-15  
-**Supersedes:** Original Aspen-Sentinel `docs/adr/ADR-001-llm-integration-pattern.md`
+**Supersedes:** Original Coding-Agent `docs/adr/ADR-001-llm-integration-pattern.md`
 
 ---
 

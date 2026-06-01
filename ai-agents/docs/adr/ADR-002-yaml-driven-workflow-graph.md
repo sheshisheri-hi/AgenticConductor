@@ -7,7 +7,7 @@
 
 ## Context
 
-The original Aspen-Sentinel pipeline (ADR-004 in the root `docs/decisions/`) used a hardcoded Python `match` state machine. Every stage transition was a method call in `pipeline.py`. Adding a new stage, changing a route, or creating a variant (e.g. ADO-only pipeline, adversarial review) required Python changes and a new deployment.
+The original Coding-Agent pipeline (ADR-004 in the root `docs/decisions/`) used a hardcoded Python `match` state machine. Every stage transition was a method call in `pipeline.py`. Adding a new stage, changing a route, or creating a variant (e.g. ADO-only pipeline, adversarial review) required Python changes and a new deployment.
 
 The Conductor rewrite identified this as the primary maintainability problem: **routing logic should be configuration, not code**.
 

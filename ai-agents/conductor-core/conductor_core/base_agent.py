@@ -1,6 +1,6 @@
 """BaseAgent — LLM-calling agent with multi-round enrichment loop.
 
-Migrated and generalized from Aspen-Sentinel's base_agent.py.
+Migrated and generalized from Coding-Agent's base_agent.py.
 All LLM-using agents inherit from BaseAgent.
 
 Key changes from the original:
