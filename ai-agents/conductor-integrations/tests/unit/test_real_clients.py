@@ -426,7 +426,11 @@ async def test_real_git_plan_mode_no_side_effects():
     assert "conductor-fix" in decision.reasoning[0]
 
 
-async def test_real_git_execute_no_token():
+async def test_real_git_execute_no_token(monkeypatch):
+    # Clear all token env vars so agent truly has no token
+    for var in ("CONDUCTOR_GIT_TOKEN", "CONDUCTOR_GITHUB_TOKEN",
+                "GITHUB_COPILOT_TOKEN", "COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
     ctx = _ctx(mode="execute")
     agent = RealGitAgent(token="")
     decision = await agent.run(ctx)

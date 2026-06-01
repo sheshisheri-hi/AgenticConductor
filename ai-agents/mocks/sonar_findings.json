@@ -9,6 +9,9 @@
   "repo_name": "conductor-sample-app",
   "file_path": "samples/sonar/auth_handler.py",
   "line_number": 28,
+  "files_content": {
+    "samples/sonar/auth_handler.py": "import sqlite3\n\nDB_PATH = \"app.db\"\nADMIN_PASSWORD = \"hardcoded_secret_123\"  # noqa: S105 — hardcoded credential (SONAR S2068)\n\n\ndef get_db():\n    return sqlite3.connect(DB_PATH)\n\n\ndef get_user(username: str) -> dict | None:\n    \"\"\"Fetch a user record by username.\n\n    WARNING: This function is intentionally vulnerable to SQL injection.\n    The 'username' parameter is concatenated directly into the query string\n    instead of using a parameterised query, violating OWASP A03:2021.\n    \"\"\"\n    conn = get_db()\n    cursor = conn.cursor()\n    # BAD: user-controlled input concatenated into SQL — CWE-89\n    query = \"SELECT id, username, email, role FROM users WHERE username = '\" + username + \"'\"\n    cursor.execute(query)  # line 28 — flagged by SonarQube python:S3649\n    row = cursor.fetchone()\n    conn.close()\n    if row is None:\n        return None\n    return {\"id\": row[0], \"username\": row[1], \"email\": row[2], \"role\": row[3]}\n\n\ndef authenticate(username: str, password: str) -> bool:\n    user = get_user(username)\n    if user is None:\n        return False\n    # Simplified — real code would hash+compare\n    return password == ADMIN_PASSWORD\n"
+  },
   "metadata": {
     "rule": "python:S3649",
     "rule_name": "Database queries should not be vulnerable to injection attacks",
