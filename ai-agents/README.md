@@ -673,6 +673,181 @@ CONDUCTOR_OTEL_SERVICE_NAME=conductor
 
 ---
 
+## Architecture — End-to-End System Design
+
+The Conductor framework is a **5-layer orchestration platform** for multi-agent AI workflows:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         DATA SOURCES                                 │
+├──────────────────────────────────────────────────────────────────────┤
+│ Snyk │ SonarQube │ BlackDuck │ Azure DevOps │ GitHub │ REST APIs     │
+│                                                                       │
+│ ↓ (Work items: CVEs, code issues, defects, PRs, user stories)       │
+└──────────────────────────────────────────────────────────────────────┘
+                                 ↓
+┌──────────────────────────────────────────────────────────────────────┐
+│                   WORKFLOW ORCHESTRATOR                              │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  conductor.json (Manifest)     workflow.yaml (DAG)                   │
+│  ├─ Agents list              ├─ Stages (triage → code → review)     │
+│  ├─ Integrations             ├─ Gates (parallel execution)          │
+│  └─ Security settings        ├─ Routes (rule-based workflow select) │
+│                              └─ Filters (pre-filter logic)           │
+│                                                                       │
+│  WORKFLOW CONTEXT (Mutable State)                                    │
+│  ├─ run_id, payload, decisions, metadata                            │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+                                 ↓
+        ┌────────────────────────┼────────────────────────┐
+        ↓                        ↓                        ↓
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│  PRE-AGENT HOOK  │   │ AGENT EXECUTION  │   │ POST-AGENT HOOK  │
+├──────────────────┤   ├──────────────────┤   ├──────────────────┤
+│ • run_start      │   │ 1. TokenScrubber │   │ • post_agent_run │
+│ • filter_match   │   │    (redacts logs)│   │ • decision_made  │
+│ • pre_agent_run  │   │                  │   │ • stage_complete │
+│ • route_selected │   │ 2. Rate Limiter  │   │ • run_end        │
+│                  │   │    (Phase 5)     │   │                  │
+│ Fire events to   │   │                  │   │ Fire events to   │
+│ hooks registry   │   │ 3. InputLimiter  │   │ hooks registry   │
+│                  │   │    (Phase 5)     │   │                  │
+│ Can modify       │   │                  │   │ Can trigger      │
+│ context/payload  │   │ 4. LLM Call      │   │ notifications    │
+│                  │   │    (with model   │   │                  │
+│                  │   │     settings)    │   │                  │
+│                  │   │                  │   │                  │
+│                  │   │ 5. Timeout       │   │                  │
+│                  │   │    (Phase 5)     │   │                  │
+│                  │   │                  │   │                  │
+│                  │   │ 6. @validated_   │   │                  │
+│                  │   │    agent         │   │                  │
+│                  │   │    (schema       │   │                  │
+│                  │   │     validation)  │   │                  │
+│                  │   │                  │   │                  │
+│                  │   │ 7. TokenLimiter  │   │                  │
+│                  │   │    (Phase 5)     │   │                  │
+│                  │                       │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+                                 ↓
+        ┌────────────────────────┼────────────────────────┐
+        ↓                        ↓                        ↓
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│ FILTERING LAYER  │   │  13+ AGENTS      │   │ OUTPUT VALIDATION│
+├──────────────────┤   ├──────────────────┤   ├──────────────────┤
+│ Pre-filter rules │   │ • TriageAgent    │   │ @validated_agent │
+│ ├─ Source check  │   │ • SecurityAnalyst│   │ decorator checks │
+│ ├─ Severity      │   │ • Resolver       │   │ against schemas: │
+│ ├─ Duplicates    │   │ • PlannerAgent   │   │                  │
+│ ├─ Quota limits  │   │ • CodeAgent      │   │ • SecurityFinding
+│ └─ Schedule OK   │   │ • ReviewerAgent  │   │ • CodeGenOutput  │
+│                  │   │ • ScribeAgent    │   │ • RemediationPlan
+│ Filter.yaml      │   │ • GitAgent       │   │ • DecisionOutput │
+│ + runtime logic  │   │ • NotifyAgent    │   │ • ... (20+ total)
+│                  │   │ • FeedbackAgent  │   │                  │
+│                  │   │ • + more         │   │ Returns error if │
+│                  │   │                  │   │ validation fails │
+│                  │   │ Each agent:      │   │                  │
+│                  │   │ • Has context    │   │                  │
+│                  │   │ • Calls LLM      │   │                  │
+│                  │   │ • Returns:       │   │                  │
+│                  │   │   {decision,     │   │                  │
+│                  │   │    confidence,   │   │                  │
+│                  │   │    reasoning}    │   │                  │
+│                  │                       │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+                                 ↓
+        ┌────────────────────────┼────────────────────────┐
+        ↓                        ↓                        ↓
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│  SECURITY LAYER  │   │  MODEL CONTROL   │   │  PERSISTENCE     │
+├──────────────────┤   ├──────────────────┤   ├──────────────────┤
+│ TokenScrubber:   │   │ LLM Provider:    │   │ SQLiteResultStore
+│ • Redacts keys   │   │ • CopilotLLM     │   │ or PostgreSQL    │
+│ • Redacts tokens │   │ • OpenAI         │   │                  │
+│ • Redacts secrets│   │ • Mock (for dev) │   │ Stores:           │
+│ • 10+ patterns   │   │                  │   │ • Run metadata   │
+│                  │   │ Model settings:  │   │ • Agent decisions│
+│ DependencyChecker│   │ • Model name     │   │ • Token counts   │
+│ • CVE checks     │   │ • Temperature    │   │ • Costs/tokens   │
+│ • SHA hashing    │   │ • Max tokens     │   │ • Timestamps     │
+│ • Supply chain   │   │ • Top-p sampling │   │ • Payloads       │
+│                  │   │                  │   │                  │
+│ mTLS/A2A Server: │   │ DoS Protection   │   │ Query results:   │
+│ • Cert validation│   │ (Phase 5):       │   │ $ conductor runs │
+│ • Agent-to-Agent │   │ • max_tokens     │   │ $ conductor trace
+│ • HTTP endpoints │   │ • max_input_size │   │ $ conductor plan │
+│ • Ports 8001/2   │   │ • timeout_sec    │   │                  │
+│                  │   │ • rate_limit_min │   │                  │
+│                  │                       │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+```
+
+### 5-Layer Security Stack:
+
+1. **Input Validation** — Pydantic models enforce agent input schema
+2. **TokenScrubber** — Redacts 10+ secret patterns from logs before they're stored
+3. **@validated_agent** — Outputs validated against Pydantic schemas; errors logged but don't halt workflow
+4. **DependencyChecker** — Pre-flight CVE and SHA256 verification; non-blocking
+5. **mTLS/A2A Server** — Agents exposed as authenticated HTTP endpoints (port 8001, optional)
+
+### Configuration Hierarchy:
+
+```
+conductor.json          ← What agents exist, security settings
+  ↓
+workflow.yaml           ← How agents are chained (stages, gates, routes)
+  ↓
+settings.py             ← Runtime config (LLM, logging, database, etc.)
+  ↓
+Model DoS Protection    ← Phase 5: Per-agent token budgets, timeouts
+```
+
+### Execution Flow Example (Snyk CVE):
+
+```
+1. SOURCE INGESTION
+   Snyk API → fetch_items() → [CVE-2023-32681, ...]
+
+2. FILTERING
+   filter_engine.evaluate() → "security" filter matched? YES → Route to workflow_security.yaml
+
+3. AGENT PIPELINE
+   Triage Agent (Stage 1)
+   ├─ Pre-hook: fire(PRE_AGENT_RUN)
+   ├─ TokenScrubber: redact API keys from logs
+   ├─ LLM Call: gpt-4 → "CVSS 6.1, needs fix"
+   ├─ @validated_agent: check output schema → ✓
+   ├─ Post-hook: fire(POST_AGENT_RUN)
+   └─ Persist: SQLite (run_id, agent, confidence, tokens, cost)
+
+   ... (more agents, some in parallel at gates) ...
+
+   Review Gate (Parallel)
+   ├─ SecurityGatekeeper → "approve"
+   └─ ReviewerAgent → "approve"
+   Both complete → Continue
+
+4. OUTPUT VALIDATION
+   All outputs validated against SchemaCatalog (20+ schemas)
+
+5. SECURITY CHECK
+   TokenScrubber removes any leaked secrets from final output
+
+6. PERSISTENCE
+   SQLiteResultStore saves: runs, agent_decisions, context snapshots
+
+7. OPTIONAL: A2A SERVER
+   Each agent becomes HTTP endpoint (POST /agents/{agent_name})
+   mTLS enforced if --mtls enabled
+```
+
+See [SECURITY_HARDENING.md](docs/SECURITY_HARDENING.md), [A2A_SERVER_GUIDE.md](docs/A2A_SERVER_GUIDE.md), and [API_REFERENCE.md](docs/API_REFERENCE.md) for detailed layer documentation.
+
+---
+
 ## ⚙️ Best Practices: conductor.json Maintenance
 
 ### 1. Keep conductor.json in Sync with Workflows
