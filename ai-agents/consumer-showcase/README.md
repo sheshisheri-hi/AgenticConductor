@@ -1,8 +1,83 @@
 # consumer-showcase
 
-**Reference consumer** demonstrating how to build a full security-remediation pipeline with Conductor. This is Layer 3 — a fully wired, runnable application you can clone, study, and adapt.
+**Production-grade reference implementation** demonstrating a full security-remediation pipeline with Conductor Framework. This is Layer 3 — a fully wired, runnable application showcasing all 5 security layers in action.
 
-It handles findings from Snyk, SonarQube, Black Duck, and Azure DevOps through a multi-stage pipeline (triage → security analysis → resolve → plan), persists results to SQLite, emits OTEL traces, and ships 4 workflow YAML configurations to showcase different pipeline shapes.
+**What it demonstrates:**
+- ✅ Multi-agent orchestration (triage → analysis → remediation → planning)
+- ✅ 5-layer security stack (validation, mTLS, secret scrubbing, output validation, supply chain)
+- ✅ Token scrubbing to prevent secret leaks
+- ✅ Output validation with @validated_agent
+- ✅ Supply chain verification with DependencyVerifier
+- ✅ A2A HTTP server for external framework integration
+- ✅ mTLS for agent-to-agent communication
+
+**Handles findings from:** Snyk, SonarQube, Black Duck, and Azure DevOps through intelligent routing and filtering.
+
+---
+
+## ✨ Phase 4 Features (NEW)
+
+### conductor.json - Project Manifest
+Declares agents, integrations, and security settings in one place:
+```json
+{
+  "name": "security-remediation",
+  "agents": [
+    {"name": "snyk_triage", "capabilities": ["triage"]},
+    {"name": "code_analyzer", "capabilities": ["analyze"]},
+    {"name": "remediation_planner", "capabilities": ["plan"]}
+  ],
+  "integrations": ["snyk", "github", "sonarqube"],
+  "settings": {
+    "token_scrubber": true,
+    "output_validator": true,
+    "dependency_check": true,
+    "a2a_server": {"enabled": false, "port": 8001, "use_mtls": true}
+  }
+}
+```
+
+### A2A HTTP Server - External Integration
+Expose agents as HTTP endpoints for external frameworks:
+```bash
+# Start HTTP server with mTLS
+python main.py --a2a-server --port 8001 --mtls
+
+# Or standalone
+python a2a_server.py --port 8001 --mtls
+
+# Endpoints available:
+# GET  /health          — Health check
+# GET  /a2a/info        — Server info
+# GET  /a2a/agents      — List agents
+# POST /a2a/call        — Call agent
+# GET  /a2a/stats       — Server stats
+```
+
+### Security Features (All Active)
+
+**Layer 1: Input Validation (@validated_agent)**
+- All agent outputs validated against Pydantic schemas
+- Prevents invalid data from flowing between agents
+
+**Layer 2: Execution Security (mTLS)**
+- Agent-to-agent communication encrypted
+- Client certificates verify agent identity
+- Auto-generated CA and per-agent certificates
+
+**Layer 3: Secret Management (TokenScrubber)**
+- GitHub tokens, AWS keys, API keys automatically redacted from logs
+- 10+ secret patterns (GitHub, AWS, JWT, Snyk, database, etc.)
+- Zero secrets in logs guarantee
+
+**Layer 4: Output Validation (SchemaCatalog)**
+- Agent outputs validated against schemas
+- Invalid outputs fail fast with clear errors
+
+**Layer 5: Supply Chain (DependencyVerifier)**
+- Dependencies checked for known vulnerabilities on startup
+- SHA256 hashing detects compromised packages
+- Pre-flight verification prevents surprises
 
 ---
 
@@ -12,25 +87,134 @@ It handles findings from Snyk, SonarQube, Black Duck, and Azure DevOps through a
 pip install -e .           # installs consumer-showcase + all dependencies
 ```
 
-Depends on `conductor-agents` → `conductor-core` + `conductor-integrations`.
+Depends on `conductor-core` (includes all security layers).
 
 ---
 
 ## Quick Start
 
+### 1. Run a Scenario (with security features active)
+
 ```bash
-# From ai-agents/ root
-make setup                 # create .venv, install all packages
+cd /path/to/consumer-showcase
 
-# Run one scenario (no LLM token required — uses StubLLM)
-cd consumer-showcase
+# TokenScrubber will redact secrets from logs
+# DependencyVerifier will check dependencies
 python main.py --scenario snyk --store /tmp/runs.db
+```
 
-# Run all 5 scenarios and persist results
+### 2. Try All Scenarios
+
+```bash
 python main.py --all --store /tmp/runs.db
+```
 
-# Run via environment variable
-DEMO_SCENARIO=sonar python main.py --store /tmp/runs.db
+### 3. Start as A2A HTTP Server (for external integrations)
+
+```bash
+# With mTLS (recommended for production)
+python main.py --a2a-server --port 8001 --mtls
+
+# External frameworks can now call agents via HTTP
+curl -X POST http://localhost:8001/a2a/call \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "snyk_triage", "context": {"run_id": "demo"}, "kwargs": {}}'
+```
+
+### 4. Check Security Features
+
+```bash
+# See what's in conductor.json
+cat conductor.json
+
+# Verify TokenScrubber (try logging a secret)
+python -c "
+import logging
+from conductor_core.secrets.token_scrubber import ScrubFilter
+
+logging.basicConfig(level=logging.INFO)
+logging.getLogger().addFilter(ScrubFilter())
+log = logging.getLogger()
+log.info('GitHub token: gh_abc123def456789')  # ✅ Output: 'GitHub token: <REDACTED>'
+"
+
+# Verify DependencyVerifier
+python -c "
+from conductor_core.supply_chain.dependencies import DependencyVerifier
+import asyncio
+
+async def check():
+    verifier = DependencyVerifier()
+    result = await verifier.verify('requirements.txt')
+    print('✅ Dependencies verified' if not result['has_risks'] else '⚠️ Risks found')
+
+asyncio.run(check())
+"
+```
+
+---
+
+## ⚠️ Important: conductor.json Must Match All Workflow Agents
+
+Each workflow.yaml file can use different agents, but **all agents must be declared in conductor.json FIRST**.
+
+### Current Setup:
+
+**conductor.json declares 4 agents:**
+```json
+"agents": [
+  {"name": "snyk_triage", ...},
+  {"name": "code_analyzer", ...},
+  {"name": "remediation_planner", ...},
+  {"name": "github_reporter", ...}
+]
+```
+
+**Available workflows:**
+- `workflow_security.yaml` — uses 3 agents (triage → analysis → plan) ✅
+- `workflow_ado.yaml` — uses 3 agents (triage → resolve → plan) ✅
+- `workflow_execute.yaml` — uses 9+ agents (triage → code → review → git → notify → feedback) ⚠️
+- `workflow_adversarial.yaml` — uses agents with model override ✅
+- `workflow.yaml` — default workflow ✅
+
+### If You See This Error:
+
+```
+❌ agent_not_found
+   stage: "code"
+   agent_key: "code_agent"
+   registered: ["snyk_triage", "code_analyzer", "remediation_planner", "github_reporter"]
+
+❌ context.mark_blocked("No agent registered for: 'code_agent'")
+```
+
+**Fix:** Add the missing agent to conductor.json:
+
+```json
+{
+  "agents": [
+    {"name": "snyk_triage", ...},
+    {"name": "code_analyzer", ...},
+    {"name": "remediation_planner", ...},
+    {"name": "code_agent", ...},           // ← ADD THIS
+    {"name": "review_agent", ...},         // ← ADD THIS
+    {"name": "github_reporter", ...}
+  ]
+}
+```
+
+### Validation Checklist:
+
+Before running a workflow, verify all agents exist:
+
+```bash
+# Extract agents from workflow
+grep "agent:" config/workflow_execute.yaml | awk '{print $NF}' | sort -u
+
+# Extract agents from conductor.json
+jq -r '.agents[].name' conductor.json | sort -u
+
+# They should match — if not, update conductor.json!
 ```
 
 ---
@@ -46,6 +230,27 @@ Each scenario uses a real code file in `samples/` and a pre-baked mock JSON in `
 | Black Duck | `blackduck` | `samples/blackduck/package_copyleft.py` | GPL-3.0 license violation |
 | ADO Defect | `ado-defect` | `samples/ado/buggy_calculator.py` | Off-by-one + division-by-zero |
 | ADO Story | `ado-story` | `samples/ado/feature_stub.py` | Unimplemented `paginate()` method |
+
+### Security During Execution
+
+When you run scenarios, all 5 security layers are active:
+
+```bash
+python main.py --scenario snyk
+
+# What happens:
+# 1. conductor.json loaded → Security settings read
+# 2. TokenScrubber initialized → All logs will redact secrets
+# 3. DependencyVerifier runs → Dependencies checked for vulnerabilities
+# 4. Workflow selected → workflow_security.yaml loaded
+# 5. Agents executed → @validated_agent validates all outputs
+# 6. Results saved → SQLite store (encrypted in production)
+
+# Output shows:
+# ✅ TokenScrubber initialized - secrets will be redacted from logs
+# 🔍 Running supply chain verification...
+# ✅ Supply chain check passed
+```
 
 ---
 
@@ -101,31 +306,192 @@ All 10 agents are imported from **`conductor-agents`** — this consumer is pure
 ## Module Map
 
 ```
-consumer-showcase/
-├── main.py                         # CLI entry point, StubLLM, scenario wiring
+consumer-showcase/                    ← PROJECT ROOT
+├── main.py                           ← Orchestration entry point (run with --scenario or --a2a-server)
+├── a2a_server.py ✨                 ← A2A HTTP server (NEW Phase 4)
+├── conductor.json ✨                ← Project manifest (NEW Phase 4)
 ├── config/
-│   ├── workflow.yaml               # default (security: snyk/sonar/blackduck)
-│   ├── workflow_security.yaml      # plan-only: halts before code stage
-│   ├── workflow_ado.yaml           # ADO: skips CVE analysis
-│   ├── workflow_execute.yaml       # full 11-stage pipeline
-│   └── workflow_adversarial.yaml   # adversarial gate with per-stage model
-├── scripts/
-│   └── __init__.py                 # (scripts moved to conductor-cli)
-├── consumer_showcase/
-│   └── agents/                     # re-exports from conductor-agents
-│       ├── __init__.py
-│       ├── triage_agent.py         # backward-compat re-export
-│       └── planner_agent.py        # backward-compat re-export
+│   ├── workflow_security.yaml        ← Snyk/Sonar/BlackDuck flow
+│   ├── workflow_ado.yaml             ← Azure DevOps flow
+│   ├── workflow_execute.yaml         ← Full pipeline
+│   └── workflow_adversarial.yaml     ← Adversarial review demo
+│
+├── consumer_showcase/                ← PYTHON PACKAGE
+│   ├── __init__.py
+│   ├── config/
+│   │   └── settings.py               ← Python configuration
+│   ├── agents/                       ← Agent implementations
+│   │   ├── __init__.py
+│   │   ├── triage_agent.py
+│   │   └── ... (other agents)
+│   └── prompts/                      ← LLM prompts
+│
 └── tests/
-    ├── unit/
-    │   └── test_agents.py          # unit tests (stubbed LLM)
-    └── integration/
-        └── test_scenarios.py       # all 5 scenarios end-to-end
+    ├── unit/                         ← Unit tests
+    └── integration/                  ← End-to-end tests
 ```
 
 ---
 
-## Workflow YAML Configurations
+---
+
+## Architecture - 5-Layer Security Stack
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ External Framework (via HTTP)                                │
+└─────────────────────┬──────────────────────────────────────┘
+                      │ mTLS (encrypted)
+┌─────────────────────▼──────────────────────────────────────┐
+│ Layer 5: A2A HTTP Server (a2a_server.py)                   │
+├────────────────────────────────────────────────────────────┤
+│ /a2a/call → routes to orchestrator                          │
+│ /a2a/agents → list available agents                         │
+│ mTLS certificate verification                              │
+└─────────────────────┬──────────────────────────────────────┘
+                      │
+┌─────────────────────▼──────────────────────────────────────┐
+│ Layer 4: Supply Chain (DependencyVerifier)                  │
+├────────────────────────────────────────────────────────────┤
+│ SHA256 verification of dependencies                         │
+│ CVE checking on startup                                     │
+│ Blocks deployment if vulnerabilities found                  │
+└─────────────────────┬──────────────────────────────────────┘
+                      │
+┌─────────────────────▼──────────────────────────────────────┐
+│ Layer 3: Secret Management (TokenScrubber)                  │
+├────────────────────────────────────────────────────────────┤
+│ 10+ secret patterns redacted (GitHub, AWS, JWT, etc)        │
+│ Applied globally to all logs                                │
+│ Zero secrets in output guarantee                            │
+└─────────────────────┬──────────────────────────────────────┘
+                      │
+┌─────────────────────▼──────────────────────────────────────┐
+│ Layer 2: Execution Security (mTLS + @validated_agent)       │
+├────────────────────────────────────────────────────────────┤
+│ Agent-to-agent encryption                                   │
+│ Pydantic schema validation on all outputs                   │
+│ Agent identity verification via client certificates         │
+└─────────────────────┬──────────────────────────────────────┘
+                      │
+┌─────────────────────▼──────────────────────────────────────┐
+│ Layer 1: Input Validation (Pydantic Schemas)                │
+├────────────────────────────────────────────────────────────┤
+│ All agent inputs validated before execution                 │
+│ Rejects malformed data                                      │
+│ Clear error messages on validation failure                  │
+└────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## API Reference
+
+All public APIs are documented in `/docs/API_REFERENCE.md`. Key classes:
+
+### WorkflowOrchestrator
+```python
+from conductor_core.orchestration import WorkflowOrchestrator
+
+orchestrator = WorkflowOrchestrator(workflow_path="config/workflow_security.yaml")
+context = await orchestrator.run_scenario("snyk", store_path="/tmp/runs.db")
+
+# Returns WorkflowContext with:
+# - run_id: unique execution ID
+# - findings: list of findings
+# - recommendations: remediation steps
+```
+
+### @validated_agent
+```python
+from conductor_core.decorators import validated_agent
+from pydantic import BaseModel
+
+class TriageOutput(BaseModel):
+    severity: str  # CRITICAL | HIGH | MEDIUM | LOW
+    cves: list[str]
+    recommendation: str
+
+@validated_agent(output_schema=TriageOutput)
+async def my_agent(context: WorkflowContext, **kwargs) -> TriageOutput:
+    return TriageOutput(severity="HIGH", cves=["CVE-2023-32681"], recommendation="Update package")
+```
+
+### TokenScrubber (Active on Startup)
+```python
+# Already active — all logs automatically have secrets redacted
+# Patterns covered: GitHub tokens, AWS keys, API keys, JWT, Snyk keys, database passwords, etc.
+
+# Example:
+log.info("Connecting with token: gh_abc123def456789")
+# Output: "Connecting with token: <REDACTED>"
+```
+
+### DependencyVerifier (Active on Startup)
+```python
+# Already runs pre-flight check on application startup
+# Blocks deployment if vulnerabilities detected
+
+# Manual verification:
+from conductor_core.supply_chain.dependencies import DependencyVerifier
+
+verifier = DependencyVerifier()
+result = await verifier.verify("requirements.txt")
+if result["has_risks"]:
+    print(f"⚠️ Found {len(result['risks'])} vulnerabilities")
+else:
+    print("✅ All dependencies are safe")
+```
+
+---
+
+## Security Configuration (conductor.json)
+
+All security settings are controlled via `conductor.json`:
+
+```json
+{
+  "settings": {
+    "token_scrubber": true,           // ✅ Enable secret redaction
+    "output_validator": true,         // ✅ Validate all agent outputs
+    "dependency_check": true,         // ✅ Pre-flight vulnerability check
+    "a2a_server": {
+      "enabled": false,               // Change to true to start HTTP server
+      "port": 8001,
+      "use_mtls": true                // ✅ Enable mTLS for agent-to-agent
+    }
+  }
+}
+```
+
+---
+
+## Production Deployment
+
+See `/docs/SECURITY_HARDENING.md` for complete guide covering:
+- Pre-deployment security checklist
+- mTLS certificate setup and rotation
+- Secret management (environment variables, vaults)
+- Monitoring and logging (OTEL traces)
+- Incident response procedures
+- Scaling recommendations
+
+**Quick checklist:**
+```bash
+# 1. Verify all security layers active
+python -c "from consumer_showcase.main import verify_security; verify_security()"
+
+# 2. Run security tests
+pytest tests/ -k security -v
+
+# 3. Check dependencies
+python -c "import conductor_core; print(conductor_core.__version__)"
+
+# 4. Start with mTLS in production
+python main.py --a2a-server --mtls --port 8001
+```
+
+---
 
 Four configurations are included to showcase different pipeline shapes. Select via `--workflow`:
 

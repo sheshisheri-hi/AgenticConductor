@@ -1,0 +1,65 @@
+{
+  "name": "security-remediation",
+  "version": "2.0.0",
+  "description": "Production security scanning pipeline with comprehensive security features: token scrubbing, output validation, supply chain checks, and A2A server integration",
+  "agents": [
+    {
+      "name": "snyk_triage",
+      "description": "Triage security findings from Snyk vulnerability scanner",
+      "capabilities": ["triage", "parse_findings", "severity_classification"],
+      "requires": ["snyk_api_token"]
+    },
+    {
+      "name": "code_analyzer",
+      "description": "Analyze code for security issues using static analysis",
+      "capabilities": ["analyze_code", "identify_issues", "pattern_matching"],
+      "requires": ["sonar_integration"]
+    },
+    {
+      "name": "remediation_planner",
+      "description": "Generate step-by-step remediation instructions with validation",
+      "capabilities": ["plan_remediation", "estimate_effort", "validate_plan"],
+      "requires": []
+    },
+    {
+      "name": "github_reporter",
+      "description": "Create GitHub issues for security findings",
+      "capabilities": ["report_issues", "create_pr", "add_labels"],
+      "requires": ["github_token"]
+    }
+  ],
+  "integrations": [
+    "snyk",
+    "sonarqube",
+    "github",
+    "azure-devops"
+  ],
+  "settings": {
+    "mode": "execute",
+    "log_level": "INFO",
+    "llm_provider": "stub",
+    "parallel_execution": false,
+    "security_features": {
+      "token_scrubber": true,
+      "output_validator": true,
+      "dependency_check": true,
+      "a2a_server": {
+        "enabled": false,
+        "port": 8001,
+        "use_mtls": true,
+        "cert_dir": ".conductor/certs"
+      }
+    },
+    "human_gate": true,
+    "timeout_seconds": 300,
+    "retry_policy": {
+      "max_retries": 3,
+      "backoff_multiplier": 2
+    }
+  },
+  "notifications": {
+    "on_vulnerability_found": "email",
+    "on_remediation_complete": "github_issue",
+    "on_error": "log"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "security-remediation",
+  "version": "1.0.0",
+  "description": "Production security scanning pipeline with Snyk + code analysis",
+  "agents": [
+    {"name": "snyk_triage", "capabilities": ["triage", "parse_findings"]},
+    {"name": "code_analyzer", "capabilities": ["analyze_code", "identify_issues"]},
+    {"name": "remediation_plan", "capabilities": ["plan_remediation"]},
+    {"name": "github_reporter", "capabilities": ["report_issues"]}
+  ],
+  "integrations": ["snyk", "github"],
+  "settings": {
+    "mode": "execute",
+    "log_level": "INFO",
+    "llm_provider": "stub",
+    "security_features": ["token_scrubber", "output_validator", "dependency_check"],
+    "human_gate": true
+  }
+}

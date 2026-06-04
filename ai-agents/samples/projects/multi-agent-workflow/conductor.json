@@ -1,0 +1,15 @@
+{
+  "name": "multi-agent-workflow",
+  "version": "1.0.0",
+  "agents": [
+    {"name": "fetcher", "capabilities": ["fetch"]},
+    {"name": "processor_a", "capabilities": ["process_variant_a"]},
+    {"name": "processor_b", "capabilities": ["process_variant_b"]},
+    {"name": "aggregator", "capabilities": ["aggregate", "filter", "sort"]}
+  ],
+  "settings": {
+    "mode": "execute",
+    "log_level": "INFO",
+    "parallelization": "yes"
+  }
+}
