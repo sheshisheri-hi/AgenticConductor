@@ -1,33 +1,25 @@
 {
   "name": "security-remediation",
   "version": "2.0.0",
+  "author": {
+    "name": "Conductor Framework Team",
+    "email": "team@conductor.dev"
+  },
   "description": "Production security scanning pipeline with comprehensive security features: token scrubbing, output validation, supply chain checks, and A2A server integration",
   "agents": [
-    {
-      "name": "snyk_triage",
-      "description": "Triage security findings from Snyk vulnerability scanner",
-      "capabilities": ["triage", "parse_findings", "severity_classification"],
-      "requires": ["snyk_api_token"]
-    },
-    {
-      "name": "code_analyzer",
-      "description": "Analyze code for security issues using static analysis",
-      "capabilities": ["analyze_code", "identify_issues", "pattern_matching"],
-      "requires": ["sonar_integration"]
-    },
-    {
-      "name": "remediation_planner",
-      "description": "Generate step-by-step remediation instructions with validation",
-      "capabilities": ["plan_remediation", "estimate_effort", "validate_plan"],
-      "requires": []
-    },
-    {
-      "name": "github_reporter",
-      "description": "Create GitHub issues for security findings",
-      "capabilities": ["report_issues", "create_pr", "add_labels"],
-      "requires": ["github_token"]
-    }
+    "agents/triage.py",
+    "agents/security_analyst.py",
+    "agents/resolver.py",
+    "agents/planner.py",
+    "agents/code.py",
+    "agents/security_gatekeeper.py",
+    "agents/reviewer.py",
+    "agents/scribe.py",
+    "agents/git.py",
+    "agents/notify.py",
+    "agents/feedback.py"
   ],
+  "workflow": "config/workflow_security.yaml",
   "integrations": [
     "snyk",
     "sonarqube",

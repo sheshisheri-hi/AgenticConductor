@@ -223,8 +223,18 @@ async def run(
     """
     settings = ConsumerSettings()
     from conductor_core.config.settings import ConductorSettings
+    from conductor_core.manifest import ConductorManifest
     core_settings = ConductorSettings()
     configure_logging(log_level=settings.log_level, log_file=log_file or settings.log_file)
+
+    # Load conductor.json manifest (demonstrates best practice from samples/hello-world)
+    manifest_path = Path(__file__).parent / "conductor.json"
+    if not manifest_path.exists():
+        log.warning(f"⚠️  conductor.json not found at {manifest_path} - using defaults")
+        manifest = None
+    else:
+        manifest = ConductorManifest.load(manifest_path)
+        log.info(f"✅ Loaded manifest: {manifest.name} v{manifest.version}")
 
     if provider_mode in ("sample", "integration", "live"):
         from conductor_integrations.llm.copilot import CopilotLLM
@@ -262,6 +272,26 @@ async def run(
         "notify": NotifyAgent(),
         "feedback": FeedbackAgent(),
     }
+
+    # Validate conductor.json if loaded
+    if manifest and agents:
+        # Extract agent names from manifest (can be dict or string paths)
+        manifest_agent_names = set()
+        for agent in manifest.agents:
+            if isinstance(agent, dict) and "name" in agent:
+                manifest_agent_names.add(agent["name"])
+            elif isinstance(agent, str):
+                # Extract name from path: "agents/triage.py" → "triage"
+                import os
+                name = os.path.splitext(os.path.basename(agent))[0]
+                manifest_agent_names.add(name)
+        
+        code_agent_names = set(agents.keys())
+        missing_in_manifest = code_agent_names - manifest_agent_names
+        if missing_in_manifest:
+            log.warning(f"⚠️  Agents in code but not in conductor.json: {missing_in_manifest}")
+        else:
+            log.info(f"✅ All {len(code_agent_names)} agents found in conductor.json")
 
     graph = WorkflowGraph.from_yaml(workflow_yaml or _WORKFLOW_YAMLS.get(scenario, _WORKFLOW_YAML))
     orch = WorkflowOrchestrator(agents=agents, graph=graph, result_store=result_store)
