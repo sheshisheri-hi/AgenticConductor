@@ -18,12 +18,24 @@ sys.path.insert(0, str(_ROOT / "conductor-core"))
 
 from conductor_core.stores.sqlite_store import SQLiteResultStore  # noqa: E402
 
+# Import Tier 2 commands (ADR-010)
+from conductor_cli.commands.run_command import run_command  # noqa: E402
+from conductor_cli.commands.model_command import model_command  # noqa: E402
+from conductor_cli.commands.resume_command import resume_command  # noqa: E402
+from conductor_cli.commands.diff_command import diff_command  # noqa: E402
+
 app = typer.Typer(
     name="conductor",
     help="Conductor multi-agent framework CLI",
     add_completion=False,
     rich_markup_mode="rich",
 )
+
+# Register Tier 2 commands
+app.command("run")(run_command)
+app.command("model")(model_command)
+app.command("resume")(resume_command)
+app.command("diff")(diff_command)
 console = Console()
 
 # ---------------------------------------------------------------------------
