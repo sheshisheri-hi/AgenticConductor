@@ -1,0 +1,19 @@
+{
+  "name": "hello-world",
+  "version": "1.0.0",
+  "description": "Minimal Conductor app — learn the basics in 5 minutes",
+  "agents": [
+    {
+      "name": "greeter",
+      "description": "Greets users with an emoji",
+      "capabilities": ["greet"]
+    }
+  ],
+  "integrations": [],
+  "settings": {
+    "mode": "plan",
+    "log_level": "INFO",
+    "llm_provider": "stub",
+    "human_gate": false
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "acp-integration",
+  "version": "1.0.0",
+  "description": "Azure Copilot integration - agents that can be called via HTTP",
+  "agents": [
+    {"name": "intent_classifier", "capabilities": ["classify_intent"]},
+    {"name": "context_builder", "capabilities": ["build_context"]},
+    {"name": "response_generator", "capabilities": ["generate_response"]}
+  ],
+  "integrations": ["azure-copilot"],
+  "settings": {
+    "mode": "execute",
+    "llm_provider": "stub",
+    "a2a_server": {"enabled": false, "port": 8002}
+  }
+}

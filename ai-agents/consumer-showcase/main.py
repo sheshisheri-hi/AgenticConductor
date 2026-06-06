@@ -8,6 +8,14 @@ Usage:
     python main.py --scenario ado-story
     python main.py --all            # run all 5 scenarios back-to-back
     python main.py --store runs.db  # persist results to SQLite file
+    python main.py --a2a-server     # start as HTTP A2A server (port 8001)
+    python main.py --a2a-server --mtls  # with mTLS enabled
+
+Security Features:
+    - Token scrubbing: Secrets redacted from all logs
+    - Output validation: Agent outputs validated against schemas
+    - Supply chain checks: Dependencies verified on startup
+    - A2A server: Expose agents via secure HTTP endpoints
 
 Env var fallback: DEMO_SCENARIO=snyk python main.py
 """
@@ -29,9 +37,31 @@ from conductor_core.stores.sqlite_store import SQLiteResultStore
 from conductor_core.interfaces import IResultStore
 from conductor_integrations.sources.factory import create_ingest_client
 
+# Security features
+try:
+    from conductor_core.secrets.token_scrubber import ScrubFilter
+    from conductor_core.supply_chain.dependencies import DependencyVerifier
+except ImportError:
+    ScrubFilter = None
+    DependencyVerifier = None
+
 from consumer_showcase.config.settings import ConsumerSettings
 
 log = get_logger(__name__)
+
+# Initialize global security features
+def _setup_security():
+    """Set up security features (token scrubber, etc)."""
+    if ScrubFilter:
+        logging_filter = ScrubFilter()
+        import logging
+        logging.getLogger().addFilter(logging_filter)
+        log.info("✅ TokenScrubber initialized - secrets will be redacted from logs")
+    else:
+        log.warning("⚠️  TokenScrubber not available - install conductor_core[security]")
+
+# Call on module import
+_setup_security()
 
 _SCENARIOS = {
     "snyk": ("snyk", "defect"),
@@ -193,8 +223,18 @@ async def run(
     """
     settings = ConsumerSettings()
     from conductor_core.config.settings import ConductorSettings
+    from conductor_core.manifest import ConductorManifest
     core_settings = ConductorSettings()
     configure_logging(log_level=settings.log_level, log_file=log_file or settings.log_file)
+
+    # Load conductor.json manifest (demonstrates best practice from samples/hello-world)
+    manifest_path = Path(__file__).parent / "conductor.json"
+    if not manifest_path.exists():
+        log.warning(f"⚠️  conductor.json not found at {manifest_path} - using defaults")
+        manifest = None
+    else:
+        manifest = ConductorManifest.load(manifest_path)
+        log.info(f"✅ Loaded manifest: {manifest.name} v{manifest.version}")
 
     if provider_mode in ("sample", "integration", "live"):
         from conductor_integrations.llm.copilot import CopilotLLM
@@ -232,6 +272,26 @@ async def run(
         "notify": NotifyAgent(),
         "feedback": FeedbackAgent(),
     }
+
+    # Validate conductor.json if loaded
+    if manifest and agents:
+        # Extract agent names from manifest (can be dict or string paths)
+        manifest_agent_names = set()
+        for agent in manifest.agents:
+            if isinstance(agent, dict) and "name" in agent:
+                manifest_agent_names.add(agent["name"])
+            elif isinstance(agent, str):
+                # Extract name from path: "agents/triage.py" → "triage"
+                import os
+                name = os.path.splitext(os.path.basename(agent))[0]
+                manifest_agent_names.add(name)
+        
+        code_agent_names = set(agents.keys())
+        missing_in_manifest = code_agent_names - manifest_agent_names
+        if missing_in_manifest:
+            log.warning(f"⚠️  Agents in code but not in conductor.json: {missing_in_manifest}")
+        else:
+            log.info(f"✅ All {len(code_agent_names)} agents found in conductor.json")
 
     graph = WorkflowGraph.from_yaml(workflow_yaml or _WORKFLOW_YAMLS.get(scenario, _WORKFLOW_YAML))
     orch = WorkflowOrchestrator(agents=agents, graph=graph, result_store=result_store)
@@ -490,6 +550,22 @@ if __name__ == "__main__":
             "live=real LLM+real scanner APIs+real git"
         ),
     )
+    parser.add_argument(
+        "--a2a-server",
+        action="store_true",
+        help="Start as A2A HTTP server instead of running scenarios (exposes agents via HTTP)",
+    )
+    parser.add_argument(
+        "--a2a-port",
+        type=int,
+        default=8001,
+        help="Port for A2A server (default: 8001)",
+    )
+    parser.add_argument(
+        "--mtls",
+        action="store_true",
+        help="Enable mTLS for A2A server (generates certificates in .conductor/certs/)",
+    )
     args = parser.parse_args()
 
     # Build result store from --store path or CONDUCTOR_DB_URL env var.
@@ -498,16 +574,43 @@ if __name__ == "__main__":
     store: IResultStore | None = _build_store(args.store)
 
     async def _main():
-        scenarios = list(_SCENARIOS) if args.all else [args.scenario]
-        wf_path = Path(args.workflow) if args.workflow else None
-        # Pass log_file override; run() uses settings.log_file by default
-        for sc in scenarios:
-            result = await run(sc, result_store=store, workflow_yaml=wf_path, log_file=args.log_file, provider_mode=args.mode)
-            _print_result(result, scenario=sc)
-        if store:
-            print(f"\n💾 Results persisted to: {args.store}")
-        if args.log_file:
-            print(f"📋 Logs written to: {args.log_file}")
+        # A2A Server mode
+        if args.a2a_server:
+            try:
+                from a2a_server import run_server
+                log.info(f"🚀 Starting A2A HTTP server on port {args.a2a_port}...")
+                if args.mtls:
+                    log.info("🔐 mTLS enabled - certificates will be generated")
+                await run_server(port=args.a2a_port, use_mtls=args.mtls)
+            except ImportError as e:
+                log.error(f"❌ Could not start A2A server: {e}")
+                exit(1)
+        else:
+            # Normal scenario mode
+            scenarios = list(_SCENARIOS) if args.all else [args.scenario]
+            wf_path = Path(args.workflow) if args.workflow else None
+            
+            # Supply chain check (if available)
+            if DependencyVerifier:
+                log.info("🔍 Running supply chain verification...")
+                try:
+                    verifier = DependencyVerifier()
+                    result = await verifier.verify("requirements.txt")
+                    if result.get('has_risks'):
+                        log.warning(f"⚠️  Supply chain risks detected: {result.get('risks', [])}")
+                    else:
+                        log.info("✅ Supply chain check passed")
+                except Exception as e:
+                    log.warning(f"⚠️  Supply chain check failed (non-blocking): {e}")
+            
+            # Pass log_file override; run() uses settings.log_file by default
+            for sc in scenarios:
+                result = await run(sc, result_store=store, workflow_yaml=wf_path, log_file=args.log_file, provider_mode=args.mode)
+                _print_result(result, scenario=sc)
+            if store:
+                print(f"\n💾 Results persisted to: {args.store}")
+            if args.log_file:
+                print(f"📋 Logs written to: {args.log_file}")
 
     asyncio.run(_main())
 

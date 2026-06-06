@@ -1,0 +1,57 @@
+{
+  "name": "security-remediation",
+  "version": "2.0.0",
+  "author": {
+    "name": "Conductor Framework Team",
+    "email": "team@conductor.dev"
+  },
+  "description": "Production security scanning pipeline with comprehensive security features: token scrubbing, output validation, supply chain checks, and A2A server integration",
+  "agents": [
+    "agents/triage.py",
+    "agents/security_analyst.py",
+    "agents/resolver.py",
+    "agents/planner.py",
+    "agents/code.py",
+    "agents/security_gatekeeper.py",
+    "agents/reviewer.py",
+    "agents/scribe.py",
+    "agents/git.py",
+    "agents/notify.py",
+    "agents/feedback.py"
+  ],
+  "workflow": "config/workflow_security.yaml",
+  "integrations": [
+    "snyk",
+    "sonarqube",
+    "github",
+    "azure-devops"
+  ],
+  "settings": {
+    "mode": "execute",
+    "log_level": "INFO",
+    "llm_provider": "stub",
+    "parallel_execution": false,
+    "security_features": {
+      "token_scrubber": true,
+      "output_validator": true,
+      "dependency_check": true,
+      "a2a_server": {
+        "enabled": false,
+        "port": 8001,
+        "use_mtls": true,
+        "cert_dir": ".conductor/certs"
+      }
+    },
+    "human_gate": true,
+    "timeout_seconds": 300,
+    "retry_policy": {
+      "max_retries": 3,
+      "backoff_multiplier": 2
+    }
+  },
+  "notifications": {
+    "on_vulnerability_found": "email",
+    "on_remediation_complete": "github_issue",
+    "on_error": "log"
+  }
+}
