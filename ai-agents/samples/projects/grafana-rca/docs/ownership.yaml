@@ -1,0 +1,17 @@
+components:
+  - component: dashboard
+    team: dashboards-ui
+    repos: [grafana/grafana]
+    owners: [dashboards-ui-oncall]
+  - component: datasource
+    team: data-sources
+    repos: [grafana/grafana]
+    owners: [data-sources-oncall]
+  - component: query
+    team: query-runtime
+    repos: [grafana/grafana]
+    owners: [query-runtime-oncall]
+  - component: alerting
+    team: alerting
+    repos: [grafana/grafana]
+    owners: [alerting-oncall]

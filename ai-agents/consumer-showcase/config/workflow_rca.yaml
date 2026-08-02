@@ -1,0 +1,34 @@
+workflow:
+  name: grafana_rca
+  description: "RCA demo: Triage → Plan with term/defect memory enrichment (halt after plan)"
+  mode: plan
+
+filters:
+  - type: reject_if_in
+    field: work_item.severity
+    values: [info]
+
+routes:
+  - match:
+      source: [ado, mock, github, grafana]
+    graph: ado_remediation
+  - match:
+      source: ["*"]
+    graph: escalate_human
+
+stages:
+  - name: triage
+    agent: triage
+    on_proceed: plan
+    on_block: terminal
+
+  - name: plan
+    agent: planner
+    on_proceed: code
+    on_block: terminal
+
+  - name: code
+    agent: code
+    stop_before: true
+    on_proceed: terminal
+    on_block: terminal

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "GF-1001",
+    "symptom": "Dashboard panels stuck loading after changing the time range",
+    "root_cause": "Datasource query timeout too low for large Prometheus range queries",
+    "component": "datasource",
+    "resolution": "Increase datasource timeout and add query cancellation on time-range change",
+    "issue_url": "https://github.com/grafana/grafana/issues/1001",
+    "fix_pr": "https://github.com/grafana/grafana/pull/1002",
+    "repos": ["grafana/grafana"]
+  },
+  {
+    "id": "GF-1002",
+    "symptom": "Charts freeze and spin forever when auto-refresh is enabled",
+    "root_cause": "Refresh loop issued overlapping queries without aborting in-flight requests",
+    "component": "dashboard",
+    "resolution": "Abort prior QueryRunner requests before starting refresh cycle",
+    "issue_url": "https://github.com/grafana/grafana/issues/1002",
+    "fix_pr": "https://github.com/grafana/grafana/pull/1003",
+    "repos": ["grafana/grafana"]
+  },
+  {
+    "id": "GF-1003",
+    "symptom": "Alert rules flapping every evaluation interval",
+    "root_cause": "Noisy datasource latency caused intermittent no-data evaluations",
+    "component": "alerting",
+    "resolution": "Treat transient datasource errors as last-known state with grace period",
+    "issue_url": "https://github.com/grafana/grafana/issues/1003",
+    "fix_pr": "",
+    "repos": ["grafana/grafana"]
+  },
+  {
+    "id": "GF-1004",
+    "symptom": "Graph panels blank after switching Prometheus datasource",
+    "root_cause": "Cached query options retained previous datasource UID",
+    "component": "query",
+    "resolution": "Clear query cache when datasource UID changes",
+    "issue_url": "https://github.com/grafana/grafana/issues/1004",
+    "fix_pr": "https://github.com/grafana/grafana/pull/1005",
+    "repos": ["grafana/grafana"]
+  },
+  {
+    "id": "GF-1005",
+    "symptom": "Time picker zoom makes all visualizations hang",
+    "root_cause": "Unbounded max data points requested for wide time windows",
+    "component": "query",
+    "resolution": "Cap maxDataPoints and show partial-result warning",
+    "issue_url": "https://github.com/grafana/grafana/issues/1005",
+    "fix_pr": "",
+    "repos": ["grafana/grafana"]
+  },
+  {
+    "id": "GF-1006",
+    "symptom": "Panels show spinner forever on slow Loki queries",
+    "root_cause": "Missing client-side timeout for Explore/Loki log queries",
+    "component": "datasource",
+    "resolution": "Enforce default HTTP timeout in Loki datasource plugin",
+    "issue_url": "https://github.com/grafana/grafana/issues/1006",
+    "fix_pr": "https://github.com/grafana/grafana/pull/1007",
+    "repos": ["grafana/grafana"]
+  }
+]

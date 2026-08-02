@@ -6,7 +6,8 @@ Usage:
     python main.py --scenario blackduck
     python main.py --scenario ado-defect
     python main.py --scenario ado-story
-    python main.py --all            # run all 5 scenarios back-to-back
+    python main.py --scenario grafana-rca
+    python main.py --all            # run all scenarios back-to-back
     python main.py --store runs.db  # persist results to SQLite file
     python main.py --a2a-server     # start as HTTP A2A server (port 8001)
     python main.py --a2a-server --mtls  # with mTLS enabled
@@ -69,6 +70,7 @@ _SCENARIOS = {
     "blackduck": ("blackduck", "defect"),
     "ado-defect": ("ado", "defect"),
     "ado-story": ("ado", "user_story"),
+    "grafana-rca": ("grafana", "defect"),
 }
 
 _WORKFLOW_YAML = Path(__file__).parent / "config" / "workflow.yaml"
@@ -79,7 +81,10 @@ _WORKFLOW_YAMLS = {
     "blackduck":  Path(__file__).parent / "config" / "workflow_security.yaml",
     "ado-defect": Path(__file__).parent / "config" / "workflow_ado.yaml",
     "ado-story":  Path(__file__).parent / "config" / "workflow_ado.yaml",
+    "grafana-rca": Path(__file__).parent / "config" / "workflow_rca.yaml",
 }
+
+_GRAFANA_PACK = Path(__file__).resolve().parents[1] / "samples" / "projects" / "grafana-rca"
 
 # Scenario-specific fix plans keyed by scenario name.
 # Used by StubLLM to return realistic output without a real LLM token.
@@ -139,6 +144,22 @@ _STUB_PLANS = {
         "tests_needed": ["test_paginate_basic", "test_paginate_last_page", "test_paginate_empty"],
         "estimated_effort": "S",
     },
+    "grafana-rca": {
+        "summary": "Fix dashboard freeze on time-range change via query cancel + datasource timeout (cite GF-1001/GF-1005)",
+        "steps": [
+            "Abort in-flight QueryRunner requests when the time picker changes",
+            "Raise/clamp Prometheus datasource timeout for wide ranges",
+            "Cap maxDataPoints for large windows; add regression test for time-range switch",
+        ],
+        "files_to_change": [
+            "public/app/features/dashboard/...",
+            "public/app/features/query/...",
+        ],
+        "tests_needed": ["test_time_range_change_cancels_queries", "test_datasource_timeout"],
+        "estimated_effort": "M",
+        "candidate_repos": ["grafana/grafana"],
+        "cited_defects": ["GF-1001", "GF-1005"],
+    },
 }
 
 # Scenario-specific triage reasoning (what the 'LLM' says about each item)
@@ -193,6 +214,20 @@ _STUB_TRIAGE = {
         "recommendation": "proceed",
         "confidence": 0.90,
     },
+    "grafana-rca": {
+        "reasoning": [
+            "NL symptoms map to dashboard time-range + query/datasource timeout terms.",
+            "Similar defects GF-1001 and GF-1005 describe the same freeze pattern.",
+            "candidate_repos=[grafana/grafana]; route to ado_remediation / plan.",
+        ],
+        "evidence": [
+            "term_hits include time_range, timeout, datasource",
+            "similar_defects: GF-1001, GF-1005",
+            "owners from ownership map",
+        ],
+        "recommendation": "proceed",
+        "confidence": 0.93,
+    },
 }
 
 
@@ -214,8 +249,9 @@ async def run(
         log_file: Write structured JSON logs to this path (overrides settings.log_file).
         provider_mode: One of:
             - ``mock``        — StubLLM, hardcoded responses, no token needed (default)
-            - ``sample``      — Real LLM (GitHub Copilot) + pre-built sample fixtures + stub git
-            - ``integration`` — Real LLM + sample fixtures + REAL git ops on test repos (needs GITHUB_TOKEN + GITHUB_ORG)
+            - ``sample``      — Real LLM (Copilot by default, or CONDUCTOR_LLM_PROVIDER) + fixtures + stub git
+            - ``cursor``      — Real LLM via Cursor SDK (needs CURSOR_API_KEY) + fixtures + stub git
+            - ``integration`` — Real LLM + sample fixtures + REAL git ops on test repos
             - ``live``        — Real LLM + real scanner APIs + real git ops on prod repos
 
     Returns:
@@ -236,9 +272,12 @@ async def run(
         manifest = ConductorManifest.load(manifest_path)
         log.info(f"✅ Loaded manifest: {manifest.name} v{manifest.version}")
 
-    if provider_mode in ("sample", "integration", "live"):
-        from conductor_integrations.llm.copilot import CopilotLLM
-        llm = CopilotLLM()
+    if provider_mode in ("sample", "integration", "live", "cursor"):
+        from conductor_integrations.llm import create_llm_provider
+
+        # --mode cursor forces Cursor SDK; otherwise CONDUCTOR_LLM_PROVIDER or copilot
+        provider_name = "cursor" if provider_mode == "cursor" else None
+        llm = create_llm_provider(provider_name)
     else:
         llm = _build_stub_llm(scenario)
 
@@ -296,30 +335,83 @@ async def run(
     graph = WorkflowGraph.from_yaml(workflow_yaml or _WORKFLOW_YAMLS.get(scenario, _WORKFLOW_YAML))
     orch = WorkflowOrchestrator(agents=agents, graph=graph, result_store=result_store)
 
-    source, ado_scenario = _SCENARIOS[scenario]
-    client = create_ingest_client(source, scenario=ado_scenario)
-    items = await client.fetch_items()
-    item = items[0]
+    if scenario == "grafana-rca":
+        item_dict, rca_memory = _prepare_grafana_rca_pack()
+        ctx = WorkflowContext(
+            run_id=f"{item_dict.get('id', 'grafana-rca')}-demo",
+            payload={
+                "work_item": item_dict,
+                "github_org": settings.github_org,
+                "rca_memory": rca_memory,
+            },
+            mode="plan",
+        )
+    else:
+        source, ado_scenario = _SCENARIOS[scenario]
+        client = create_ingest_client(source, scenario=ado_scenario)
+        items = await client.fetch_items()
+        item = items[0]
+        ctx = WorkflowContext(
+            run_id=f"{item.id}-demo",
+            payload={
+                "work_item": item.model_dump(),
+                "github_org": settings.github_org,
+            },
+            mode="execute" if core_settings.code_execution_enabled else "plan",
+        )
 
-    ctx = WorkflowContext(
-        run_id=f"{item.id}-demo",
-        payload={
-            "work_item": item.model_dump(),
-            "github_org": settings.github_org,
-        },
-        mode="execute" if core_settings.code_execution_enabled else "plan",
+    log.info(
+        "demo.starting",
+        scenario=scenario,
+        item_id=ctx.payload.get("work_item", {}).get("id"),
+        severity=ctx.payload.get("work_item", {}).get("severity"),
     )
-
-    log.info("demo.starting", scenario=scenario, item_id=item.id, severity=item.severity)
-    result = await orch.run(ctx, mode=ctx.mode)
+    try:
+        result = await orch.run(ctx, mode=ctx.mode)
+    finally:
+        close = getattr(llm, "close", None)
+        if close is not None:
+            await close()
     log.info(
         "demo.complete",
         scenario=scenario,
         decisions=len(result.decisions),
         blocked=result.blocked,
         blocked_reason=result.blocked_reason,
+        rca_enriched=bool(result.payload.get("rca_enriched")),
+        candidate_repos=result.payload.get("candidate_repos"),
     )
     return result
+
+
+def _prepare_grafana_rca_pack() -> tuple[dict, dict]:
+    """Ensure indexes exist and return work_item + rca_memory config."""
+    pack = _GRAFANA_PACK
+    term_db = pack / "data" / "term_index.sqlite"
+    defect_db = pack / "data" / "defect_index.sqlite"
+    glossary = pack / "docs" / "glossary.yaml"
+    triples = pack / "data" / "triples.json"
+    ownership = pack / "docs" / "ownership.yaml"
+    work_item_path = pack / "data" / "work_item.json"
+
+    from conductor_integrations.memory.builders import build_defect_index, build_term_index
+
+    if not term_db.exists() or term_db.stat().st_mtime < glossary.stat().st_mtime:
+        build_term_index(glossary, term_db)
+        log.info("grafana_rca.built_term_index", path=str(term_db))
+    if not defect_db.exists() or defect_db.stat().st_mtime < triples.stat().st_mtime:
+        build_defect_index(triples, defect_db)
+        log.info("grafana_rca.built_defect_index", path=str(defect_db))
+
+    item_dict = json.loads(work_item_path.read_text(encoding="utf-8"))
+    rca_memory = {
+        "term_index": str(term_db),
+        "defect_index": str(defect_db),
+        "ownership": str(ownership),
+        "k_terms": 4,
+        "k_defects": 3,
+    }
+    return item_dict, rca_memory
 
 
 def _build_stub_llm(scenario: str):
@@ -473,11 +565,31 @@ def _print_result(result: WorkflowContext, scenario: str = "") -> None:
         for line in d.reasoning:
             print(f"    • {line}")
     if "fix_plan" in result.payload:
-        plan = result.payload["fix_plan"]
-        print(f"\nFix Plan : {plan.get('summary', 'N/A')}")
-        print(f"Effort   : {plan.get('estimated_effort', 'N/A')}")
-        for step in plan.get("steps", []):
+        plan = result.payload["fix_plan"] or {}
+        if not isinstance(plan, dict):
+            plan = {"summary": str(plan)}
+        print(f"\nFix Plan : {plan.get('summary') or plan.get('description') or 'N/A'}")
+        print(f"Effort   : {plan.get('estimated_effort') or plan.get('risk_level') or 'N/A'}")
+        steps = plan.get("steps") or []
+        if not steps and plan.get("description"):
+            steps = [plan["description"]]
+        for step in steps:
             print(f"  → {step}")
+        files = plan.get("files_to_change") or []
+        if not files:
+            affected = plan.get("affected_files") or []
+            files = [
+                (f.get("path") if isinstance(f, dict) else str(f))
+                for f in affected
+            ]
+        if files:
+            print(f"Files    : {', '.join(str(f) for f in files if f)}")
+    if result.payload.get("rca_enriched"):
+        print("\nRCA enrichment:")
+        print(f"  terms   : {[t.get('canonical') for t in result.payload.get('term_hits') or []]}")
+        print(f"  similar : {[d.get('triple_id') for d in result.payload.get('similar_defects') or []]}")
+        print(f"  repos   : {result.payload.get('candidate_repos')}")
+        print(f"  owners  : {result.payload.get('owners')}")
     print(f"Tokens   : {result.telemetry.total_tokens}")
     print(f"Est. Cost: ${total_cost:.4f}")
     print("=" * 60)
@@ -541,13 +653,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["mock", "sample", "integration", "live"],
+        choices=["mock", "sample", "cursor", "integration", "live"],
         default=os.environ.get("CONDUCTOR_PROVIDER_MODE", "mock"),
         help=(
-            "Provider mode: mock=StubLLM+fixtures+stub-git (default), "
-            "sample=real LLM+fixtures+stub-git (needs GITHUB_TOKEN), "
-            "integration=real LLM+fixtures+REAL git on test repos (needs GITHUB_TOKEN+GITHUB_ORG), "
-            "live=real LLM+real scanner APIs+real git"
+            "Provider mode: mock=StubLLM (default), "
+            "sample=Copilot LLM (or CONDUCTOR_LLM_PROVIDER) + fixtures, "
+            "cursor=Cursor SDK LLM (needs CURSOR_API_KEY) + fixtures, "
+            "integration=real LLM + real git on test repos, "
+            "live=real LLM + real scanner APIs + real git"
         ),
     )
     parser.add_argument(
