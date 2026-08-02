@@ -16,7 +16,11 @@ $route_config
 ## Existing Campaigns
 $existing_campaigns
 
+## RCA Context (product terms + similar defects + candidate repos)
+$rca_context
+
 ## Prior Decisions
 $prior_decisions
 
 Classify and route this work item. Round: $round
+If RCA candidate_repos are present, treat repo as known. Cite term/similar-defect evidence in reasoning.

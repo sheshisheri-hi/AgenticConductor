@@ -1,0 +1,16 @@
+{
+  "id": "GF-DEMO-42",
+  "title": "Charts freeze after changing time range",
+  "source": "github",
+  "type": "defect",
+  "severity": "HIGH",
+  "description": "Users report that graphs stop updating and the loading spinner stays forever when they pick a new time window on the dashboard. Happens more on large Prometheus connections. Sounds like the boards hang when zooming time.",
+  "url": "https://github.com/grafana/grafana/issues/demo-42",
+  "repo_name": "",
+  "file_path": "",
+  "line_number": null,
+  "metadata": {
+    "reproduction_steps": "Open dashboard → change time picker to last 7 days → panels spin indefinitely",
+    "tags": ["dashboard", "ux", "regression"]
+  }
+}

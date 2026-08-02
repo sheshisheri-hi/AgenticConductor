@@ -4,6 +4,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from conductor_agents.agents.planner.fix_plan import (
+    extract_fix_plan_from_payload,
+    normalize_fix_plan,
+)
 from conductor_core.base_agent import BaseAgent
 from conductor_core.context import WorkflowContext
 from conductor_core.decisions import AgentDecision
@@ -29,13 +33,16 @@ class PlannerAgent(BaseAgent):
         item = context.payload.get("work_item", {})
         triage = context.decisions_by_agent("triage")
         triage_summary = triage[-1].reasoning[0] if triage and triage[-1].reasoning else "N/A"
+        repos = context.payload.get("candidate_repos") or []
+        repo_name = item.get("repo_name", "") or (", ".join(repos) if repos else "")
         return {
             "finding_summary": f"{item.get('severity','')}: {item.get('title','')} in {item.get('file_path','')}",
             "analysis_context": triage_summary,
-            "repo_name": item.get("repo_name", ""),
+            "repo_name": repo_name,
             "tech_stack": item.get("tech_stack", "unknown"),
             "default_branch": "main",
             "related_code": "N/A",
+            "rca_context": context.payload.get("rca_context", "RCA enrichment not available."),
             "prior_decisions": self._format_prior_decisions(context),
             "round": str(round_num),
         }
@@ -44,17 +51,29 @@ class PlannerAgent(BaseAgent):
         decision = super()._parse_decision(raw_response, round_num)
         try:
             data = json.loads(self._strip_code_fences(raw_response))
-            if "fix_plan" in data:
-                self._last_fix_plan = data["fix_plan"]
-            elif "plan" in data:
-                self._last_fix_plan = data["plan"]
+            raw_plan = extract_fix_plan_from_payload(data)
+            self._last_fix_plan = normalize_fix_plan(raw_plan)
         except Exception:
             pass
         return decision
 
     async def run(self, context: WorkflowContext) -> AgentDecision:
         self._last_fix_plan = None
+        try:
+            from conductor_integrations.memory.enrich import maybe_enrich_rca
+
+            maybe_enrich_rca(context)
+        except Exception:
+            pass
         decision = await self.run_with_enrichment(context)
         if self._last_fix_plan:
             context.payload["fix_plan"] = self._last_fix_plan
+        elif decision.reasoning:
+            context.payload["fix_plan"] = normalize_fix_plan(
+                {
+                    "summary": decision.reasoning[0],
+                    "steps": decision.reasoning[1:] or list(decision.reasoning[:1]),
+                    "estimated_effort": "unknown",
+                }
+            )
         return decision

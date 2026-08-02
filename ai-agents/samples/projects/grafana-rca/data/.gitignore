@@ -1,0 +1,2 @@
+# Built indexes (regenerate via builders); keep sources committed
+*.sqlite

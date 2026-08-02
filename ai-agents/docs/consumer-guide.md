@@ -14,6 +14,8 @@ A **consumer** is a thin application that:
 
 The framework handles orchestration, LLM calling, multi-round reasoning, telemetry, tracing, and persistence automatically.
 
+For **defect RCA + product memory (glossary / similar bugs / ownership)**, see [context-engineering-rca.md](context-engineering-rca.md) and the runnable sample [`samples/projects/grafana-rca/`](../samples/projects/grafana-rca/).
+
 ---
 
 ## Step 1: Create the Package

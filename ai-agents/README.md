@@ -1092,6 +1092,7 @@ pip install consumer-showcase            # + full security-remediation reference
 | [docs/architecture.md](docs/architecture.md) | Full architecture, runtime flow, persistence schema |
 | [docs/workflow-yaml.md](docs/workflow-yaml.md) | Complete YAML config reference |
 | [docs/consumer-guide.md](docs/consumer-guide.md) | Step-by-step new consumer guide |
+| [docs/context-engineering-rca.md](docs/context-engineering-rca.md) | Defect RCA context engineering (Grafana sample design) |
 | [docs/scripts.md](docs/scripts.md) | All scripts with options and examples |
 | [conductor-agents/README.md](conductor-agents/README.md) | All 10 agents, prompt guide, how to extend |
 | [conductor-core/README.md](conductor-core/README.md) | Framework internals |

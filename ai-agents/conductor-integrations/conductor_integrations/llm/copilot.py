@@ -66,7 +66,8 @@ _NO_COPILOT_ACCESS_MSG = """\
   This usually means:
     • The GitHub account does not have an active Copilot subscription
     • The token does not have the required scope
-    • The Copilot CLI is not installed (run: npm install -g @github/copilot-language-server)
+    • The Copilot CLI is not installed (run: npm install -g @github/copilot)
+      See: https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli
 
   Check your subscription: https://github.com/settings/copilot
   ─────────────────────────────────────────────────────────────────────────────

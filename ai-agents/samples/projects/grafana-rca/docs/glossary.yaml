@@ -1,0 +1,57 @@
+terms:
+  - id: dashboard
+    canonical: Dashboard
+    aliases: [dashboards, board, graphs page, chart wall]
+    plain_language: A page of panels that visualize metrics or logs over a time range
+    component: dashboard
+    repos: [grafana/grafana]
+    code_hints: [DashboardModel, DashboardPage]
+  - id: panel
+    canonical: Panel
+    aliases: [chart, graph, visualization, viz]
+    plain_language: A single visualization tile on a dashboard
+    component: dashboard
+    repos: [grafana/grafana]
+    code_hints: [PanelModel, PanelChrome]
+  - id: datasource
+    canonical: Datasource
+    aliases: [data source, data-source, query backend, prometheus connection]
+    plain_language: Configured connection Grafana uses to fetch data from a backend
+    component: datasource
+    repos: [grafana/grafana]
+    code_hints: [DataSourceApi, DataSourceWithBackend]
+  - id: query
+    canonical: Query
+    aliases: [metric query, log query, request, fetch data]
+    plain_language: A request sent through a datasource to retrieve series or logs
+    component: query
+    repos: [grafana/grafana]
+    code_hints: [DataQuery, QueryRunner]
+  - id: refresh
+    canonical: Refresh
+    aliases: [auto-refresh, live update, charts updating, graphs updating]
+    plain_language: Periodic or manual reload of dashboard panel queries
+    component: dashboard
+    repos: [grafana/grafana]
+    code_hints: [RefreshPicker, TimeSrv]
+  - id: time_range
+    canonical: Time range
+    aliases: [time picker, time window, zoom time, changing time range]
+    plain_language: The selected from/to window that scopes all dashboard queries
+    component: dashboard
+    repos: [grafana/grafana]
+    code_hints: [TimeRange, TimePicker]
+  - id: alert_rule
+    canonical: Alert rule
+    aliases: [alert, alerting rule, flapping alert, notification rule]
+    plain_language: Evaluation that fires notifications when a condition is met
+    component: alerting
+    repos: [grafana/grafana]
+    code_hints: [AlertRule, eval]
+  - id: timeout
+    canonical: Query timeout
+    aliases: [timed out, hangs, freeze, stuck loading, spinner forever]
+    plain_language: Query or panel wait exceeded configured timeout, often appearing as a freeze
+    component: query
+    repos: [grafana/grafana]
+    code_hints: [timeout, QueryTimeout]
