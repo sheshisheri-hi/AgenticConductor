@@ -252,19 +252,93 @@ grafana-rca/
 
 ---
 
+## Prerequisites and how to run
+
+### One-time setup
+
+From the monorepo `ai-agents/` root (or follow [`docs/installation.md`](../../../docs/installation.md) / `make setup`):
+
+```bash
+cd ai-agents
+python -m venv .venv && source .venv/bin/activate   # if you do not already have .venv
+pip install -e conductor-core/
+pip install -e conductor-agents/
+pip install -e "conductor-integrations[dev]"        # includes cursor-sdk + copilot extras used in tests
+# optional: only the LLM you need
+#   pip install -e "conductor-integrations[copilot]"
+#   pip install -e "conductor-integrations[cursor]"
+```
+
+Use the venv Python for the commands below (paths assume cwd = `ai-agents/conductor-integrations`).
+
+### What is expected (all modes)
+
+Console prints triage + planner decisions, a **Fix Plan** (summary / steps / files), and **RCA enrichment** (terms, `GF-*` similar IDs, repos, owners). The run **halts before code** — no repo edits. Details: **Sample inputs → what runs → where to see results** above.
+
+| Mode | API key / host tooling | Install extra | Live LLM? |
+|---|---|---|---|
+| Stub (default) | none | none | No — canned text, same console shape |
+| Copilot | GitHub token + **GitHub Copilot CLI** ([install](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli)) | `[copilot]` | Yes |
+| Cursor | `CURSOR_API_KEY` | `[cursor]` | Yes |
+
+---
+
 ## Run the demo
 
 ```bash
 cd ai-agents/conductor-integrations
+```
 
-# Stub LLM (no API key) — same console shape, canned agent text
+### A) Stub — no key (smoke test)
+
+```bash
 .venv/bin/python ../consumer-showcase/main.py --scenario grafana-rca
+# same as --mode mock
+```
 
-# Cursor SDK (export CURSOR_API_KEY in ~/.zshrc) — live triage/plan wording
+### B) GitHub Copilot
+
+`github-copilot-sdk` drives a local **GitHub Copilot CLI** subprocess — that is **not** the `gh` CLI / `gh-copilot` extension.
+
+Install Copilot CLI (once). Official guide: [Install Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli). Framework notes: [ADR-003](../../../docs/adr/ADR-003-copilot-sdk-over-openai-api.md), [docs/scripts.md](../../../docs/scripts.md).
+
+```bash
+# Requires Node.js 22+ (see GitHub install docs for Homebrew / WinGet / script options)
+npm install -g @github/copilot
+copilot   # authenticate with your GitHub account when prompted
+```
+
+Set **one** of these (first match wins):
+
+```bash
+export CONDUCTOR_GITHUB_TOKEN=ghp_...   # preferred
+# or: export GITHUB_COPILOT_TOKEN=ghp_...
+# or: export COPILOT_GITHUB_TOKEN=ghp_...
+# or: export GITHUB_TOKEN=ghp_...
+```
+
+Token / account needs an active **Copilot subscription**. Optional model: `export CONDUCTOR_LLM_MODEL=gpt-4.1`.
+
+```bash
+pip install -e ".[copilot]"   # once — installs github-copilot-sdk
+# optional sanity check from ai-agents/:
+#   ./dev.sh check
+.venv/bin/python ../consumer-showcase/main.py --scenario grafana-rca --mode sample
+```
+
+`--mode sample` uses Copilot by default (or whatever `CONDUCTOR_LLM_PROVIDER` is set to).### C) Cursor SDK
+
+```bash
+export CURSOR_API_KEY=cursor_...   # from Cursor Dashboard (user or service key)
+# optional: export CONDUCTOR_LLM_MODEL=composer-2.5
+```
+
+```bash
+pip install -e ".[cursor]"   # once, from conductor-integrations
 .venv/bin/python ../consumer-showcase/main.py --scenario grafana-rca --mode cursor
 ```
 
-Results print in that terminal (see **Sample inputs → what runs → where to see results** above). Optional persistence: add showcase `--store` if you want DB-backed run history.
+Results print in that terminal. Optional persistence: showcase `--store` for DB-backed run history.
 
 Rebuild indexes only if you change glossary/triples:
 
